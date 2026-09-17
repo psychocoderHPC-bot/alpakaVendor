@@ -99,9 +99,9 @@ jobs:
           - { compiler: clang, version: "22", cuda: "no", hip: "7.2", container: "rocm/dev-ubuntu-24.04:7.2",
               env: { APCI_DEVICE_COMPILER: clang@22, APCI_CMAKE: 3.28.3, APCI_HIP: 7.2, APCI_RUN_CTEST: OFF } }
           - { compiler: clang, version: "23", cuda: "no", hip: "7.14", container: "rocm/dev-ubuntu-24.04:7.14.1-full",
-              env: { APCI_DEVICE_COMPILER: clang@23, APCI_CMAKE: 3.28.3, APCI_HIP: 7.14, APCI_RUN_CTEST: OFF } }
+              rocm_packages: "preinstalled", env: { APCI_DEVICE_COMPILER: clang@23, APCI_CMAKE: 3.28.3, APCI_HIP: 7.14, APCI_RUN_CTEST: OFF } }
           - { compiler: clang, version: "23", cuda: "no", hip: "10.0", container: "rocm/dev-ubuntu-24.04:10.0.0-full",
-              env: { APCI_DEVICE_COMPILER: clang@23, APCI_CMAKE: 3.28.3, APCI_HIP: 10.0, APCI_RUN_CTEST: OFF } }
+              rocm_packages: "preinstalled", env: { APCI_DEVICE_COMPILER: clang@23, APCI_CMAKE: 3.28.3, APCI_HIP: 10.0, APCI_RUN_CTEST: OFF } }
           # Sanitizers
           - { compiler: clang, version: "21", cuda: "no", hip: "no", container: "ubuntu:24.04", sanitizer: "asan",
               env: { APCI_DEVICE_COMPILER: clang@21, APCI_CMAKE: 3.28.3, APCI_RUN_CTEST: ON } }
@@ -204,7 +204,9 @@ jobs:
       - name: Install ROCm
         if: matrix.config.hip != 'no'
         run: |
-          apt-get install -y rocfft rocblas
+          if [ "${{ matrix.config.rocm_packages }}" != "preinstalled" ]; then
+            apt-get install -y rocfft rocblas
+          fi
           # ROCm is pre-installed in the ROCm container
           ROCM_PATH=/opt/rocm
           echo "ROCM_PATH=${ROCM_PATH}" >> $GITHUB_ENV
