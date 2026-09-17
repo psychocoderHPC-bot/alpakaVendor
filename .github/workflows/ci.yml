@@ -149,7 +149,10 @@ jobs:
       - name: Install base dependencies
         run: |
           apt-get update
-          apt-get install -y build-essential ninja-build git pkg-config curl wget software-properties-common python3-launchpadlib ca-certificates gnupg
+          apt-get install -y build-essential ninja-build git pkg-config curl wget ca-certificates gnupg
+          if grep -q '^ID=ubuntu$' /etc/os-release; then
+            apt-get install -y software-properties-common python3-launchpadlib
+          fi
 
       - name: Install CMake
         run: |
