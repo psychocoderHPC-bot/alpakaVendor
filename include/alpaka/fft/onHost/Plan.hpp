@@ -24,7 +24,7 @@ namespace alpaka::fft::onHost
         using api_type = T_Api;
         using value_type = T_Value;
         using extents_type = T_Extents;
-        using index_type = alpaka::trait::GetValueType_t<T_Extents>;
+        using index_type = alpaka::GetValueType_t<T_Extents>;
         static constexpr uint32_t dim = T_Extents::dim();
         using impl_type = alpaka::fft::internal::PlanImpl<T_Api, T_Value, T_Extents>;
 
@@ -72,8 +72,8 @@ namespace alpaka::fft::onHost
          */
         void setWorkspace(alpaka::concepts::IMdSpan auto& span)
         {
-            auto const bytes = alpaka::onHost::getExtents(span).product()
-                               * sizeof(alpaka::trait::GetValueType_t<ALPAKA_TYPEOF(span)>);
+            auto const bytes
+                = alpaka::onHost::getExtents(span).product() * sizeof(alpaka::GetValueType_t<ALPAKA_TYPEOF(span)>);
             m_impl->setWorkspace(span.data(), static_cast<std::size_t>(bytes));
         }
 
@@ -110,7 +110,7 @@ namespace alpaka::fft::onHost
     {
     public:
         using extents_type = T_Extents;
-        using index_type = alpaka::trait::GetValueType_t<T_Extents>;
+        using index_type = alpaka::GetValueType_t<T_Extents>;
         static constexpr uint32_t dim = T_Extents::dim();
 
         /** Construct a plan builder with the given transform extents.
