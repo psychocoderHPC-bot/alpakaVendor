@@ -61,7 +61,7 @@ namespace alpaka::fft::internal
 
         Transform m_transform;
         static constexpr uint32_t T_dim = T_Extents::dim();
-        using index_type = alpaka::trait::GetValueType_t<T_Extents>;
+        using index_type = alpaka::GetValueType_t<T_Extents>;
 
         Layout<T_Extents> m_layout;
         PlanOptions m_options;

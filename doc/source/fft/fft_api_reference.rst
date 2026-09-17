@@ -55,7 +55,7 @@ Layout
            T_Extents extents{};
            alpaka::Vec<std::size_t, T_Extents::dim()> inStrides{};   ///< Byte-strides (alpaka pitch order)
            alpaka::Vec<std::size_t, T_Extents::dim()> outStrides{};  ///< Byte-strides (alpaka pitch order)
-           alpaka::trait::GetValueType_t<T_Extents> batch = 1u;
+           alpaka::GetValueType_t<T_Extents> batch = 1u;
            std::size_t inDistance = 0u;   ///< Byte distance between input batches
            std::size_t outDistance = 0u;  ///< Byte distance between output batches
        };
@@ -192,7 +192,7 @@ PlanBuilder
            PlanBuilder& r2c();
            PlanBuilder& c2r();
            PlanBuilder& extents(alpaka::concepts::VectorOrScalar auto const& value);
-           PlanBuilder& batch(alpaka::trait::GetValueType_t<T_Extents> value);
+           PlanBuilder& batch(alpaka::GetValueType_t<T_Extents> value);
 
            /** Set byte-strides per dimension (alpaka pitch convention).
            *

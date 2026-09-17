@@ -13,7 +13,7 @@ namespace alpaka::fft::internal
     [[nodiscard]] constexpr auto castVec(alpaka::concepts::Vector auto const& vec)
     {
         static_assert(T_TargetVec::dim() == ALPAKA_TYPEOF(vec)::dim(), "Extent dimensions must match.");
-        return alpaka::lpCast<alpaka::trait::GetValueType_t<T_TargetVec>>(vec);
+        return alpaka::lpCast<alpaka::GetValueType_t<T_TargetVec>>(vec);
     }
 
     template<alpaka::concepts::Vector T_TargetVec>
@@ -24,7 +24,7 @@ namespace alpaka::fft::internal
         else
         {
             using source_index_type = ALPAKA_TYPEOF(value);
-            using target_index_type = alpaka::trait::GetValueType_t<T_TargetVec>;
+            using target_index_type = alpaka::GetValueType_t<T_TargetVec>;
             static_assert(
                 alpaka::concepts::LosslesslyConvertible<source_index_type, target_index_type>,
                 "Extent scalar type must upcast to the extent vector element type without precision loss.");
@@ -44,7 +44,7 @@ namespace alpaka::fft::internal
     {
         using Vec = ALPAKA_TYPEOF(strides);
         for(uint32_t i = 0u; i < Vec::dim(); ++i)
-            if(strides[i] != static_cast<alpaka::trait::GetValueType_t<Vec>>(0u))
+            if(strides[i] != static_cast<alpaka::GetValueType_t<Vec>>(0u))
                 return false;
         return true;
     }

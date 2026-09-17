@@ -18,7 +18,7 @@ using namespace alpakaVendor::test;
 template<typename T_View>
 auto ldOf(T_View const& view)
 {
-    return view.getPitches().y() / sizeof(alpaka::trait::GetValueType_t<T_View>);
+    return view.getPitches().y() / sizeof(alpaka::GetValueType_t<T_View>);
 }
 
 template<typename T_Device>
