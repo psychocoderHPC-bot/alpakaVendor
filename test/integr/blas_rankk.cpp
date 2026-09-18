@@ -513,10 +513,10 @@ TEMPLATE_LIST_TEST_CASE(
         fillMatrix(C, n, n);
         for(std::size_t i = 0; i < n; ++i)
             for(std::size_t j = n; j < ldC; ++j)
-                Cstorage.data()[i * ldC + j] = sentinel;
+                Cstorage.data()[i * ldC + j] = Scalar(sentinel);
         for(std::size_t i = 0; i < n; ++i)
             for(std::size_t j = k; j < ldA; ++j)
-                Astorage.data()[i * ldA + j] = sentinel;
+                Astorage.data()[i * ldA + j] = Scalar(sentinel);
         auto Acopy = alpaka::onHost::allocHostLike(Astorage);
         auto Ccopy = alpaka::onHost::allocHostLike(Cstorage);
         std::copy_n(Astorage.data(), n * ldA, Acopy.data());
