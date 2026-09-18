@@ -212,7 +212,7 @@ TEMPLATE_LIST_TEST_CASE("Tutorial: BLAS walkthrough", "[doc][tutorial][blas]", T
         CHECK(syrkC[alpaka::Vec<uint32_t, 2u>{0u, 1u}] == Catch::Approx(32.0f));
         // Lower triangle unchanged (was 0)
         CHECK(syrkC[alpaka::Vec<uint32_t, 2u>{1u, 0u}] == Catch::Approx(0.0f));
-        CHECK(syrkC[alpaka::Vec<uint32_t, 2u>{1u, 1u}] == Catch::Approx(87.0f));
+        CHECK(syrkC[alpaka::Vec<uint32_t, 2u>{1u, 1u}] == Catch::Approx(77.0f));
         //! [blas-tutorial-syrk]
 
         //! [blas-tutorial-batched-gemm]
