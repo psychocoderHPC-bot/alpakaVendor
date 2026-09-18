@@ -207,12 +207,14 @@ TEMPLATE_LIST_TEST_CASE("Tutorial: BLAS walkthrough", "[doc][tutorial][blas]", T
         auto syrkUpperC = alpaka::blas::upper(syrkC);
         alpaka::blas::onHost::syrk(queue, 1.0f, syrkA, 1.0f, syrkUpperC, options);
         alpaka::onHost::wait(queue);
-        // A = [[1,2,3],[4,5,6]]; A*A^T = [[14,32],[32,77]]; C = A*A^T + 10*I (upper)
+        // A = [[1,2,3],[4,5,6]]; A*A^T = [[14,32],[32,77]]. The selected (upper) triangle of C is updated:
+        // C(i,j) = A*A^T(i,j) + C(i,j) for i <= j (the diagonal counts as upper), so the upper triangle of the
+        // result is [[24,32],[.,77]]. The opposite (strictly lower) triangle is left unchanged.
         CHECK(syrkC[alpaka::Vec<uint32_t, 2u>{0u, 0u}] == Catch::Approx(24.0f));
         CHECK(syrkC[alpaka::Vec<uint32_t, 2u>{0u, 1u}] == Catch::Approx(32.0f));
-        // Lower triangle unchanged (was 0)
+        CHECK(syrkC[alpaka::Vec<uint32_t, 2u>{1u, 1u}] == Catch::Approx(87.0f));
+        // Strictly lower triangle unchanged (was 0)
         CHECK(syrkC[alpaka::Vec<uint32_t, 2u>{1u, 0u}] == Catch::Approx(0.0f));
-        CHECK(syrkC[alpaka::Vec<uint32_t, 2u>{1u, 1u}] == Catch::Approx(77.0f));
         //! [blas-tutorial-syrk]
 
         //! [blas-tutorial-batched-gemm]
