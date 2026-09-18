@@ -973,8 +973,8 @@ namespace alpaka::blas::internal
                 T betaT = static_cast<T>(beta);
                 // Row-major C = alpha*M*M^T + beta*C is, seen column-major, D = C^T.
                 // rocBLAS syrk computes D = op(B)*op(B)^T, so pass op(B)=M^T when A is as-stored.
-                auto const colOp = ad.transpose == Transpose::none ? rocblas_operation_transpose
-                                                                   : rocblas_operation_none;
+                auto const colOp
+                    = ad.transpose == Transpose::none ? rocblas_operation_transpose : rocblas_operation_none;
                 auto const colTriangle = swappedTriangle(cd.triangle);
                 if constexpr(std::same_as<T, float>)
                     check(

@@ -4,12 +4,11 @@
  */
 
 #include <algorithm>
-#include <concepts>
+#include <alpakaTest/deviceHelper.hpp>
 #include <cmath>
+#include <concepts>
 #include <type_traits>
 #include <utility>
-
-#include <alpakaTest/deviceHelper.hpp>
 
 #include "../unit/blas/reference.hpp"
 #include "../unit/test.hpp"
@@ -37,8 +36,7 @@ void fillMatrix(auto& view, std::size_t rows, std::size_t cols)
     using T = alpaka::GetValueType_t<std::remove_cvref_t<decltype(view)>>;
     for(std::size_t i = 0; i < rows; ++i)
         for(std::size_t j = 0; j < cols; ++j)
-            view[alpaka::Vec<uint32_t, 2u>{i, j}]
-                = T(static_cast<typename alpaka::blas::Real_t<T>>(i * 10 + j + 1));
+            view[alpaka::Vec<uint32_t, 2u>{i, j}] = T(static_cast<typename alpaka::blas::Real_t<T>>(i * 10 + j + 1));
 }
 
 void fillMatrixSentinel(auto& view, std::size_t rows, std::size_t cols, auto sentinel)
@@ -305,13 +303,7 @@ TEMPLATE_LIST_TEST_CASE("BLAS syrk transposed input and lower triangle", "[integ
                     Ccopy[alpaka::Vec<uint32_t, 2u>{i, j}] = C[alpaka::Vec<uint32_t, 2u>{i, j}];
 
             auto lowerC = alpaka::blas::lower(C);
-            alpaka::blas::onHost::syrk(
-                queue,
-                float{1.25},
-                alpaka::blas::transposed(A),
-                float{-1.0},
-                lowerC,
-                options);
+            alpaka::blas::onHost::syrk(queue, float{1.25}, alpaka::blas::transposed(A), float{-1.0}, lowerC, options);
             alpaka::onHost::wait(queue);
 
             auto const ldA = ldOf(A);
@@ -334,8 +326,7 @@ TEMPLATE_LIST_TEST_CASE("BLAS syrk transposed input and lower triangle", "[integ
                 for(uint32_t j = 0; j < m; ++j)
                 {
                     if(j <= i)
-                        CHECK(
-                            C[alpaka::Vec<uint32_t, 2u>{i, j}] == Catch::Approx(Cref[i * ldC + j]).epsilon(1e-4f));
+                        CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}] == Catch::Approx(Cref[i * ldC + j]).epsilon(1e-4f));
                     else
                         CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}] == Ccopy[alpaka::Vec<uint32_t, 2u>{i, j}]);
                 }
@@ -408,8 +399,7 @@ TEMPLATE_LIST_TEST_CASE(
                 alpaka::blas::Triangle::upper);
             for(uint32_t i = 0; i < n; ++i)
                 for(uint32_t j = i; j < n; ++j)
-                    CHECK(
-                        C2[alpaka::Vec<uint32_t, 2u>{i, j}] == Catch::Approx(Cref2[i * ldC2 + j]).epsilon(1e-4f));
+                    CHECK(C2[alpaka::Vec<uint32_t, 2u>{i, j}] == Catch::Approx(Cref2[i * ldC2 + j]).epsilon(1e-4f));
         }
     }
 }
@@ -437,9 +427,7 @@ TEMPLATE_LIST_TEST_CASE("BLAS syrk validation rejects bad annotations", "[integr
         auto upperA = alpaka::blas::upper(A);
         auto unitUpperC = alpaka::blas::unitDiag(alpaka::blas::upper(C));
         // Missing triangle on C.
-        CHECK_THROWS_AS(
-            alpaka::blas::onHost::syrk(queue, Scalar{1.0}, A, Scalar{1.0}, C),
-            std::invalid_argument);
+        CHECK_THROWS_AS(alpaka::blas::onHost::syrk(queue, Scalar{1.0}, A, Scalar{1.0}, C), std::invalid_argument);
         // Triangle annotation on A.
         CHECK_THROWS_AS(
             alpaka::blas::onHost::syrk(queue, Scalar{1.0}, upperA, Scalar{1.0}, upperC),
@@ -497,7 +485,7 @@ TEMPLATE_LIST_TEST_CASE(
         constexpr std::size_t pad = 2u;
         constexpr std::size_t ldC = n + pad;
         constexpr std::size_t ldA = k + pad;
-        constexpr auto sentinel = 0x5a5a5a5af;
+        constexpr auto sentinel = 0x5'a5a5'a5af;
 
         auto Astorage = alpaka::onHost::allocUnified<Scalar>(device, n * ldA);
         auto A = alpaka::makeMdSpan(
