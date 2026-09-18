@@ -110,6 +110,9 @@ namespace alpaka::blas::onHost
      * real-valued vectors this is identical to ``dot``. For complex-valued vectors it differs from ``dot``, which
      * leaves both operands unconjugated.
      *
+     * ``dotc`` is available on the same backends as ``dot`` (OpenBLAS/cuBLAS/rocBLAS/oneMKL host paths); it is not
+     * provided for OpenMP or the generic native alpaka CPU queues.
+     *
      * @param queue alpaka queue that defines when the work runs.
      * @param x first input vector, conjugated before multiplication.
      * @param y second input vector, used as-is.

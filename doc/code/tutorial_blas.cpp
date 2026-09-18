@@ -40,6 +40,7 @@ TEMPLATE_LIST_TEST_CASE("Tutorial: BLAS walkthrough", "[doc][tutorial][blas]", T
         auto y = alpaka::onHost::allocUnified<Scalar>(device, 3u);
         auto z = alpaka::onHost::allocUnified<Scalar>(device, 3u);
         auto dotResult = alpaka::onHost::allocUnified<Scalar>(device, 1u);
+        auto dotcResult = alpaka::onHost::allocUnified<Scalar>(device, 1u);
         auto nrm2Result = alpaka::onHost::allocUnified<Scalar>(device, 1u);
         auto asumResult = alpaka::onHost::allocUnified<Scalar>(device, 1u);
         auto iamaxResult = alpaka::onHost::allocUnified<int>(device, 1u);
@@ -56,7 +57,7 @@ TEMPLATE_LIST_TEST_CASE("Tutorial: BLAS walkthrough", "[doc][tutorial][blas]", T
         alpaka::blas::onHost::scal(queue, 2.0f, z);
         alpaka::blas::onHost::axpy(queue, -1.0f, y, x);
         alpaka::blas::onHost::dot(queue, y, z, dotResult);
-        alpaka::blas::onHost::dotc(queue, y, z, dotResult);
+        alpaka::blas::onHost::dotc(queue, y, z, dotcResult);
         alpaka::blas::onHost::nrm2(queue, y, nrm2Result);
         alpaka::blas::onHost::asum(queue, x, asumResult);
         alpaka::blas::onHost::iamax(queue, x, iamaxResult);
@@ -72,6 +73,8 @@ TEMPLATE_LIST_TEST_CASE("Tutorial: BLAS walkthrough", "[doc][tutorial][blas]", T
         CHECK(y.data()[1] == Catch::Approx(2.0f));
         CHECK(y.data()[2] == Catch::Approx(3.0f));
         CHECK(dotResult.data()[0] == Catch::Approx(28.0f));
+        // For real-valued vectors dotc is identical to dot.
+        CHECK(dotcResult.data()[0] == Catch::Approx(28.0f));
         CHECK(nrm2Result.data()[0] == Catch::Approx(std::sqrt(14.0f)).epsilon(1.0e-5));
         CHECK(asumResult.data()[0] == Catch::Approx(9.0f));
         CHECK(iamaxResult.data()[0] == 1);
