@@ -50,6 +50,8 @@ jobs:
               env: { APCI_DEVICE_COMPILER: gcc@14, APCI_CMAKE: 3.28.3, APCI_RUN_CTEST: ON } }
           - { compiler: gcc, version: "15", cuda: "no", hip: "no", container: "gcc:15.1.0",
               env: { APCI_DEVICE_COMPILER: gcc@15, APCI_CMAKE: 3.28.3, APCI_RUN_CTEST: ON } }
+          - { compiler: gcc, version: "16", cuda: "no", hip: "no", container: "gcc:16.2.0",
+              env: { APCI_DEVICE_COMPILER: gcc@16, APCI_CMAKE: 3.28.3, APCI_RUN_CTEST: ON } }
           # Clang CPU
           - { compiler: clang, version: "17", cuda: "no", hip: "no", container: "ubuntu:24.04",
               env: { APCI_DEVICE_COMPILER: clang@17, APCI_CMAKE: 3.28.3, APCI_RUN_CTEST: ON } }
@@ -96,6 +98,10 @@ jobs:
               env: { APCI_DEVICE_COMPILER: clang@20, APCI_CMAKE: 3.28.3, APCI_HIP: 7.1, APCI_RUN_CTEST: OFF } }
           - { compiler: clang, version: "22", cuda: "no", hip: "7.2", container: "rocm/dev-ubuntu-24.04:7.2",
               env: { APCI_DEVICE_COMPILER: clang@22, APCI_CMAKE: 3.28.3, APCI_HIP: 7.2, APCI_RUN_CTEST: OFF } }
+          - { compiler: clang, version: "23", cuda: "no", hip: "7.14", container: "rocm/dev-ubuntu-24.04:7.14.1-full",
+              rocm_packages: "preinstalled", env: { APCI_DEVICE_COMPILER: clang@23, APCI_CMAKE: 3.28.3, APCI_HIP: 7.14, APCI_RUN_CTEST: OFF } }
+          - { compiler: clang, version: "23", cuda: "no", hip: "10.0", container: "rocm/dev-ubuntu-24.04:10.0.0-full",
+              rocm_packages: "preinstalled", env: { APCI_DEVICE_COMPILER: clang@23, APCI_CMAKE: 3.28.3, APCI_HIP: 10.0, APCI_RUN_CTEST: OFF } }
           # Sanitizers
           - { compiler: clang, version: "21", cuda: "no", hip: "no", container: "ubuntu:24.04", sanitizer: "asan",
               env: { APCI_DEVICE_COMPILER: clang@21, APCI_CMAKE: 3.28.3, APCI_RUN_CTEST: ON } }
@@ -122,6 +128,8 @@ jobs:
               env: { APCI_DEVICE_COMPILER: icpx@2025.3, APCI_CMAKE: 3.28.3, APCI_RUN_CTEST: ON } }
           - { compiler: icpx, version: "2026.0", cuda: "no", hip: "no", container: "intel/oneapi:2026.0.0-devel-ubuntu24.04",
               env: { APCI_DEVICE_COMPILER: icpx@2026.0, APCI_CMAKE: 3.28.3, APCI_RUN_CTEST: ON } }
+          - { compiler: icpx, version: "2026.1", cuda: "no", hip: "no", container: "intel/oneapi:2026.1.0-devel-ubuntu24.04",
+              env: { APCI_DEVICE_COMPILER: icpx@2026.1, APCI_CMAKE: 3.28.3, APCI_RUN_CTEST: ON } }
       fail-fast: false
 
     container:
@@ -141,7 +149,10 @@ jobs:
       - name: Install base dependencies
         run: |
           apt-get update
-          apt-get install -y build-essential ninja-build git pkg-config curl wget software-properties-common python3-launchpadlib ca-certificates gnupg
+          apt-get install -y build-essential ninja-build git pkg-config curl wget ca-certificates gnupg
+          if grep -q '^ID=ubuntu$' /etc/os-release; then
+            apt-get install -y software-properties-common python3-launchpadlib
+          fi
 
       - name: Install CMake
         run: |
@@ -193,7 +204,9 @@ jobs:
       - name: Install ROCm
         if: matrix.config.hip != 'no'
         run: |
-          apt-get install -y rocfft rocblas
+          if [ "${{ matrix.config.rocm_packages }}" != "preinstalled" ]; then
+            apt-get install -y rocfft rocblas
+          fi
           # ROCm is pre-installed in the ROCm container
           ROCM_PATH=/opt/rocm
           echo "ROCM_PATH=${ROCM_PATH}" >> $GITHUB_ENV
