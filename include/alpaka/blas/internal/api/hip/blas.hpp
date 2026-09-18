@@ -946,5 +946,70 @@ namespace alpaka::blas::internal
                         "rocblas_ztrsm");
             });
     }
+
+    void alpakaFnDispatch(
+        HerkFn::Spec<alpaka::api::Hip, alpaka::deviceKind::AmdGpu>,
+        auto&& queue,
+        auto alpha,
+        auto const& A,
+        auto beta,
+        auto& C,
+        [[maybe_unused]] Options options)
+    {
+        using T = Value_t<ALPAKA_TYPEOF(A)>;
+        static_assert(ComplexScalar<T>, "herk supports only complex scalar types.");
+        auto const ad = makeMatrixDescriptor(A);
+        auto const cd = makeMatrixDescriptor(C);
+        // Logical (post-op) extents: op(A) is n x k.
+        auto const n = ad.transpose == Transpose::none ? ad.rows : ad.cols;
+        auto const k = ad.transpose == Transpose::none ? ad.cols : ad.rows;
+        queue.enqueueNativeFn(
+            [=](hipStream_t nativeStream)
+            {
+                RocblasHandle rocblas{nativeStream};
+                auto handle = rocblas.handle;
+                setAtomicsMode(handle, options);
+                using Real = Real_t<T>;
+                Real alphaT = static_cast<Real>(alpha);
+                Real betaT = static_cast<Real>(beta);
+                // Row-major C = alpha*M*adjoint(M) + beta*C is, seen column-major, D = C^T. rocBLAS herk computes
+                // D = op(B)*op(B)^H, and real alpha/beta avoid conjugating the coefficients. Reinterpreting
+                // row-major A as B = A^T gives: public none (M = A) -> op(B) = conjugate transpose;
+                // public conjTransposed (M = A^H) -> op(B) = none.
+                auto const colOp
+                    = ad.transpose == Transpose::none ? rocblas_operation_conjugate_transpose : rocblas_operation_none;
+                auto const colTriangle = swappedTriangle(cd.triangle);
+                if constexpr(std::same_as<T, alpaka::math::Complex<float>>)
+                    check(
+                        rocblas_cherk(
+                            handle,
+                            toRocblasFill(colTriangle),
+                            colOp,
+                            n,
+                            k,
+                            &alphaT,
+                            reinterpret_cast<rocblas_float_complex const*>(ad.constPtr),
+                            ad.ld,
+                            &betaT,
+                            reinterpret_cast<rocblas_float_complex*>(cd.mutPtr),
+                            cd.ld),
+                        "rocblas_cherk");
+                else
+                    check(
+                        rocblas_zherk(
+                            handle,
+                            toRocblasFill(colTriangle),
+                            colOp,
+                            n,
+                            k,
+                            &alphaT,
+                            reinterpret_cast<rocblas_double_complex const*>(ad.constPtr),
+                            ad.ld,
+                            &betaT,
+                            reinterpret_cast<rocblas_double_complex*>(cd.mutPtr),
+                            cd.ld),
+                        "rocblas_zherk");
+            });
+    }
 } // namespace alpaka::blas::internal
 #endif

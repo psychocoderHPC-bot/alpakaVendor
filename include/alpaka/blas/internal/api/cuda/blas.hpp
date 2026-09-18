@@ -883,5 +883,70 @@ namespace alpaka::blas::internal
                         "cublasZtrsm");
             });
     }
+
+    void alpakaFnDispatch(
+        HerkFn::Spec<alpaka::api::Cuda, alpaka::deviceKind::NvidiaGpu>,
+        auto&& queue,
+        auto alpha,
+        auto const& A,
+        auto beta,
+        auto& C,
+        Options options)
+    {
+        using T = Value_t<ALPAKA_TYPEOF(A)>;
+        static_assert(ComplexScalar<T>, "herk supports only complex scalar types.");
+        auto const ad = makeMatrixDescriptor(A);
+        auto const cd = makeMatrixDescriptor(C);
+        // Logical (post-op) extents: op(A) is n x k.
+        auto const n = ad.transpose == Transpose::none ? ad.rows : ad.cols;
+        auto const k = ad.transpose == Transpose::none ? ad.cols : ad.rows;
+        queue.enqueueNativeFn(
+            [=](cudaStream_t nativeStream)
+            {
+                CublasHandle cublas{nativeStream};
+                auto handle = cublas.handle;
+                setMathMode<T>(handle, options);
+                setAtomicsMode(handle, options);
+                using Real = Real_t<T>;
+                Real alphaT = static_cast<Real>(alpha);
+                Real betaT = static_cast<Real>(beta);
+                // Row-major C = alpha*M*adjoint(M) + beta*C is, seen column-major, D = C^T. cuBLAS herk computes
+                // D = op(B)*op(B)^H, and real alpha/beta avoid conjugating the coefficients. Reinterpreting
+                // row-major A as B = A^T gives: public none (M = A) -> D = A*A^H = B^H*B, so op(B) = conjugate
+                // transpose; public conjTransposed (M = A^H) -> D = A^T*conj(A) = B*B^H, so op(B) = none.
+                auto const colOp = ad.transpose == Transpose::none ? CUBLAS_OP_C : CUBLAS_OP_N;
+                auto const colTriangle = swappedTriangle(cd.triangle);
+                if constexpr(std::same_as<T, alpaka::math::Complex<float>>)
+                    check(
+                        cublasCherk(
+                            handle,
+                            toCublasFill(colTriangle),
+                            colOp,
+                            int(n),
+                            int(k),
+                            &alphaT,
+                            reinterpret_cast<cuComplex const*>(ad.constPtr),
+                            int(ad.ld),
+                            &betaT,
+                            reinterpret_cast<cuComplex*>(cd.mutPtr),
+                            int(cd.ld)),
+                        "cublasCherk");
+                else
+                    check(
+                        cublasZherk(
+                            handle,
+                            toCublasFill(colTriangle),
+                            colOp,
+                            int(n),
+                            int(k),
+                            &alphaT,
+                            reinterpret_cast<cuDoubleComplex const*>(ad.constPtr),
+                            int(ad.ld),
+                            &betaT,
+                            reinterpret_cast<cuDoubleComplex*>(cd.mutPtr),
+                            int(cd.ld)),
+                        "cublasZherk");
+            });
+    }
 } // namespace alpaka::blas::internal
 #endif

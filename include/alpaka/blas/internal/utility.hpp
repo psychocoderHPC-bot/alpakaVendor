@@ -277,6 +277,37 @@ namespace alpaka::blas::internal
             throw std::invalid_argument("trsm right requires A.rows == B.cols.");
     }
 
+    template<typename T_A, typename T_C>
+    inline void validateHerk(T_A const& A, T_C const& C)
+    {
+        static_assert(ComplexScalar<Value_t<T_A>>, "herk requires a complex A.");
+        static_assert(
+            std::same_as<Value_t<T_A>, Value_t<T_C>>,
+            "herk requires A and C to have the same element type.");
+        auto const ad = makeMatrixDescriptor(A);
+        auto const cd = makeMatrixDescriptor(C);
+        // A is a general dense matrix: reject triangle/unit-diagonal annotations.
+        if(ad.triangle != Triangle::full)
+            throw std::invalid_argument("herk requires a general dense A without a triangle annotation.");
+        if(ad.diagonal != Diagonal::nonUnit)
+            throw std::invalid_argument("herk requires a general dense A without a unit-diagonal annotation.");
+        // HERK accepts the as-stored matrix or its conjugate transpose only.
+        if(ad.transpose != Transpose::none && ad.transpose != Transpose::conjugateTransposed)
+            throw std::invalid_argument("herk accepts A or conjTransposed(A), not a plain transposed(A).");
+        // C must carry an explicit upper/lower selection.
+        if(cd.triangle == Triangle::full)
+            throw std::invalid_argument("herk requires upper(C) or lower(C).");
+        // C must not be transposed or unit-diagonal.
+        if(cd.transpose != Transpose::none)
+            throw std::invalid_argument("herk rejects a transposed C.");
+        if(cd.diagonal != Diagonal::nonUnit)
+            throw std::invalid_argument("herk rejects a unit-diagonal C.");
+        // op(A) is n x k; C must be n x n.
+        auto const n = getTranspose(A) == Transpose::none ? ad.rows : ad.cols;
+        if(cd.rows != n || cd.cols != n)
+            throw std::invalid_argument("herk requires C to be n x n where n is op(A) rows.");
+    }
+
     template<typename T>
     constexpr auto zeroValue()
     {

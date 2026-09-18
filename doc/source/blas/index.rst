@@ -20,7 +20,7 @@ What is available today?
 
 - **Level 1:** ``copy``, ``swap``, ``scal``, ``axpy``, ``dot``, ``nrm2``, ``asum``, ``iamax``
 - **Level 2:** ``gemv``
-- **Level 3:** ``gemm``, ``stridedBatchedGemm``, ``trsm``
+- **Level 3:** ``gemm``, ``stridedBatchedGemm``, ``trsm``, ``herk``
 
 How to read the BLAS views
 --------------------------

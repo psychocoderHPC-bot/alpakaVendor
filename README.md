@@ -14,7 +14,7 @@ Write once, run on any hardware — CPU, NVIDIA GPU, AMD GPU, or Intel GPU.
 | Module | Status | Description |
 |--------|--------|-------------|
 | **FFT** | Available | 1D/2D/3D C2C, R2C/C2R transforms with batched and in-place support |
-| **BLAS** | Available | BLAS Level-1, GEMV, GEMM, strided batched GEMM, and TRSM |
+| **BLAS** | Available | BLAS Level-1, GEMV, GEMM, strided batched GEMM, TRSM, and HERK (complex Hermitian rank-k) |
 | **Parallel Primitives** | Planned | Elementwise transforms, sorting, scans, reductions, and related building blocks |
 
 ## Features

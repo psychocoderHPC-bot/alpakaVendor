@@ -111,8 +111,10 @@ namespace alpaka::blas::internal
 
         if(options.algorithm == Algorithm::fastest)
         {
-            // oneMKL alternate compute modes are currently exposed only for single-precision real and complex GEMM
-            // paths; double-precision requests intentionally fall back to the routine default.
+            // oneMKL alternate compute modes (prefer_alternate) are documented only for single-precision real and
+            // complex GEMM. Non-GEMM routines (e.g. the rank-k HERK path) must NOT request them, so this helper
+            // returns the GEMM-only alternate mode solely for the GEMM dispatch; HERK uses the standard/default
+            // compute mode instead. Double-precision requests intentionally fall back to the routine default.
             if constexpr(
                 std::same_as<std::remove_cv_t<T>, float>
                 || std::same_as<std::remove_cv_t<T>, alpaka::math::Complex<float>>)
@@ -558,6 +560,48 @@ namespace alpaka::blas::internal
                     ad.ld,
                     oneMklPtr<T>(bd.mutPtr),
                     bd.ld,
+                    deps);
+            });
+    }
+
+    template<alpaka::concepts::DeviceKind T_DeviceKind>
+    void alpakaFnDispatch(
+        HerkFn::Spec<alpaka::api::OneApi, T_DeviceKind>,
+        auto&& queue,
+        auto alpha,
+        auto const& A,
+        auto beta,
+        auto& C,
+        [[maybe_unused]] Options options)
+    {
+        using T = Value_t<ALPAKA_TYPEOF(A)>;
+        static_assert(ComplexScalar<T>, "herk supports only complex scalar types.");
+        auto const ad = makeMatrixDescriptor(A);
+        auto const cd = makeMatrixDescriptor(C);
+        // Logical (post-op) extents: op(A) is n x k.
+        auto const n = ad.transpose == Transpose::none ? ad.rows : ad.cols;
+        auto const k = ad.transpose == Transpose::none ? ad.cols : ad.rows;
+        auto const alphaT = toOneMklScalar<T>(alpha);
+        auto const betaT = toOneMklScalar<T>(beta);
+        // oneMKL alternate compute modes are GEMM-only; HERK uses the standard/default compute mode, which is the
+        // routine default, so no compute-mode argument is passed.
+        queue.enqueueNativeFn(
+            [=](sycl::queue q) -> sycl::event
+            {
+                auto deps = std::vector<sycl::event>{q.ext_oneapi_submit_barrier()};
+                // oneMKL is row-major native, so the public triangle/operation are forwarded unchanged.
+                return oneapi::mkl::blas::row_major::herk(
+                    q,
+                    toOneMklUplo(cd.triangle),
+                    toOneMklTranspose(ad.transpose),
+                    n,
+                    k,
+                    alphaT,
+                    oneMklPtr<T>(ad.constPtr),
+                    ad.ld,
+                    betaT,
+                    oneMklPtr<T>(cd.mutPtr),
+                    cd.ld,
                     deps);
             });
     }
