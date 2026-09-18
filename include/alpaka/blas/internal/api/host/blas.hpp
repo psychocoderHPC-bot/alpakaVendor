@@ -697,6 +697,12 @@ namespace alpaka::blas::internal
         auto const cd = makeMatrixDescriptor(C);
         auto const n = ad.transpose == Transpose::none ? ad.rows : ad.cols;
         auto const k = ad.transpose == Transpose::none ? ad.cols : ad.rows;
+        auto const nInt = checkedCast<int>(n, "syrk n");
+        auto const kInt = checkedCast<int>(k, "syrk k");
+        auto const adLd = checkedCast<int>(ad.ld, "syrk A ld");
+        auto const cdLd = checkedCast<int>(cd.ld, "syrk C ld");
+        // For real operands conjugateTransposed is the identity-conjugated transpose: normalize to transposed.
+        auto const op = ad.transpose == Transpose::none ? CblasNoTrans : CblasTrans;
         queue.enqueueNativeFn(
             [=](auto)
             {
@@ -704,28 +710,28 @@ namespace alpaka::blas::internal
                     cblas_ssyrk(
                         CblasRowMajor,
                         toCblasUplo(cd.triangle),
-                        toCblasTranspose(ad.transpose),
-                        int(n),
-                        int(k),
+                        op,
+                        nInt,
+                        kInt,
                         static_cast<float>(alpha),
                         static_cast<float const*>(ad.constPtr),
-                        int(ad.ld),
+                        adLd,
                         static_cast<float>(beta),
                         static_cast<float*>(cd.mutPtr),
-                        int(cd.ld));
+                        cdLd);
                 else
                     cblas_dsyrk(
                         CblasRowMajor,
                         toCblasUplo(cd.triangle),
-                        toCblasTranspose(ad.transpose),
-                        int(n),
-                        int(k),
+                        op,
+                        nInt,
+                        kInt,
                         static_cast<double>(alpha),
                         static_cast<double const*>(ad.constPtr),
-                        int(ad.ld),
+                        adLd,
                         static_cast<double>(beta),
                         static_cast<double*>(cd.mutPtr),
-                        int(cd.ld));
+                        cdLd);
             });
     }
 } // namespace alpaka::blas::internal

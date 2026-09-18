@@ -962,12 +962,15 @@ namespace alpaka::blas::internal
         auto const cd = makeMatrixDescriptor(C);
         auto const n = ad.transpose == Transpose::none ? ad.rows : ad.cols;
         auto const k = ad.transpose == Transpose::none ? ad.cols : ad.rows;
+        auto const nInt = checkedCast<rocblas_int>(n, "syrk n");
+        auto const kInt = checkedCast<rocblas_int>(k, "syrk k");
+        auto const adLd = checkedCast<rocblas_int>(ad.ld, "syrk A ld");
+        auto const cdLd = checkedCast<rocblas_int>(cd.ld, "syrk C ld");
         queue.enqueueNativeFn(
             [=](hipStream_t nativeStream)
             {
                 RocblasHandle rocblas{nativeStream};
                 auto handle = rocblas.handle;
-                setPointerMode<T>(handle);
                 setAtomicsMode(handle, options);
                 T alphaT = static_cast<T>(alpha);
                 T betaT = static_cast<T>(beta);
@@ -982,14 +985,14 @@ namespace alpaka::blas::internal
                             handle,
                             toRocblasFill(colTriangle),
                             colOp,
-                            n,
-                            k,
+                            nInt,
+                            kInt,
                             &alphaT,
                             static_cast<float const*>(ad.constPtr),
-                            ad.ld,
+                            adLd,
                             &betaT,
                             static_cast<float*>(cd.mutPtr),
-                            cd.ld),
+                            cdLd),
                         "rocblas_ssyrk");
                 else
                     check(
@@ -997,14 +1000,14 @@ namespace alpaka::blas::internal
                             handle,
                             toRocblasFill(colTriangle),
                             colOp,
-                            n,
-                            k,
+                            nInt,
+                            kInt,
                             &alphaT,
                             static_cast<double const*>(ad.constPtr),
-                            ad.ld,
+                            adLd,
                             &betaT,
                             static_cast<double*>(cd.mutPtr),
-                            cd.ld),
+                            cdLd),
                         "rocblas_dsyrk");
             });
     }

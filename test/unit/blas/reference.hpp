@@ -140,10 +140,18 @@ namespace alpakaVendor::test::blas
             {
                 if(!inTri(i, j))
                     continue;
-                T sum{};
-                for(std::size_t kk = 0; kk < k; ++kk)
-                    sum += applyTranspose(a, lda, i, kk, trans) * applyTranspose(a, lda, j, kk, trans);
-                c[i * ldc + j] = alpha * sum + beta * c[i * ldc + j];
+                // Degenerate semantics mirroring the syrk wrapper: with alpha == 0 (or k == 0) the old C is only
+                // scaled by beta and A is never read; with beta == 0 the old C is never read.
+                T value{};
+                if(alpha != T{0} && k != 0)
+                {
+                    for(std::size_t kk = 0; kk < k; ++kk)
+                        value += applyTranspose(a, lda, i, kk, trans) * applyTranspose(a, lda, j, kk, trans);
+                    value = alpha * value;
+                }
+                if(beta != T{0})
+                    value += beta * c[i * ldc + j];
+                c[i * ldc + j] = value;
             }
         }
     }

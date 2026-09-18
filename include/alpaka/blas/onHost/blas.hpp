@@ -6,6 +6,7 @@
 #pragma once
 
 #include "alpaka/blas/internal/api/blas.hpp"
+#include "alpaka/blas/internal/scaleTriangle.hpp"
 
 namespace alpaka::blas::onHost
 {
@@ -304,17 +305,23 @@ namespace alpaka::blas::onHost
      * Only real scalar types (``float``, ``double``) are supported. Complex symmetric rank-k is intentionally not
      * exposed here; the complex Hermitian counterpart is ``herk``.
      *
-     * ``A`` is a general dense matrix and may be annotated ``transposed(A)``. ``conjTransposed(A)`` is rejected;
-     * use ``transposed(A)`` for real operands. ``C`` must carry an explicit ``upper(C)`` or ``lower(C)`` selection;
-     * the opposite triangle and any padding are left unchanged. Transpose and unit-diagonal annotations on ``C`` are
-     * rejected.
+     * ``A`` is a general dense matrix and may be annotated ``transposed(A)`` or ``conjTransposed(A)``. For real
+     * operands ``conjTransposed(A)`` is equivalent to ``transposed(A)`` (conjugation is the identity on real types)
+     * and is normalized to the transposed operation. ``C`` must carry an explicit ``upper(C)`` or ``lower(C)``
+     * selection; the opposite triangle and any padding are left unchanged. Transpose and unit-diagonal annotations on
+     * ``C`` are rejected.
      *
-     * The vendor BLAS call still reads the operands even when ``alpha == 0`` or ``beta == 0``; no special
-     * zero-scalar fast path is guaranteed.
+     * Degenerate cases are handled without touching the operands that must not be read:
+     * - ``n == 0`` is a no-op and no data is accessed at all.
+     * - ``k == 0`` or ``alpha == 0`` produce ``beta * C`` on the selected triangle; ``A`` is never read.
+     * - ``beta == 0`` writes ``alpha * op(A) * transpose(op(A))`` to the selected triangle; the old content of the
+     *   triangle is not read.
+     *
+     * ``A`` and ``C`` must not alias (no overlapping storage).
      *
      * @param queue alpaka queue that defines when the work runs.
      * @param alpha real scalar multiplier for the rank-k product.
-     * @param A input matrix, optionally ``transposed(A)``.
+     * @param A input matrix, optionally ``transposed(A)`` or ``conjTransposed(A)``.
      * @param beta real scalar multiplier applied to the selected triangle of the existing ``C``.
      * @param C input/output result matrix, annotated ``upper(C)`` or ``lower(C)``.
      * @param options optional backend hints.
@@ -330,6 +337,17 @@ namespace alpaka::blas::onHost
         using T = internal::Value_t<ALPAKA_TYPEOF(A)>;
         static_assert(RealScalar<T>, "syrk supports only real scalar types.");
         internal::validateSyrk(A, C);
+        auto const ad = internal::makeMatrixDescriptor(A);
+        auto const n = internal::getTranspose(A) == Transpose::none ? ad.rows : ad.cols;
+        auto const k = internal::getTranspose(A) == Transpose::none ? ad.cols : ad.rows;
+        if(n == 0)
+            return; // nothing to do, no data access.
+        if(k == 0 || static_cast<T>(alpha) == T{0})
+        {
+            // The result is beta * C on the selected triangle and A must not be read.
+            internal::enqueueScaleTriangle(queue, C, beta);
+            return;
+        }
         internal::SyrkFn::call(queue, alpha, A, beta, C, options);
     }
 } // namespace alpaka::blas::onHost

@@ -111,10 +111,11 @@ namespace alpaka::blas::internal
 
         if(options.algorithm == Algorithm::fastest)
         {
-            // oneMKL alternate compute modes are currently exposed only for single-precision real and complex GEMM
-            // paths; double-precision requests intentionally fall back to the routine default. Compute-mode requests
-            // on other routines (for example syrk) are subject to the same GEMM-only caveat and may be ignored by
-            // oneMKL.
+            // oneMKL exposes alternate compute modes for more than single-precision real and complex GEMM: they are
+            // available for SYRK (and other routines) as well. Both the compute mode and the underlying library
+            // support are routine- and device-dependent, so a request for an alternate mode is best-effort: if a
+            // routine or device does not support it, oneMKL falls back to the routine default. Double-precision
+            // requests intentionally stay with the routine default here.
             if constexpr(
                 std::same_as<std::remove_cv_t<T>, float>
                 || std::same_as<std::remove_cv_t<T>, alpaka::math::Complex<float>>)
@@ -580,6 +581,9 @@ namespace alpaka::blas::internal
         auto const cd = makeMatrixDescriptor(C);
         auto const n = ad.transpose == Transpose::none ? ad.rows : ad.cols;
         auto const k = ad.transpose == Transpose::none ? ad.cols : ad.rows;
+        // For real operands conjugateTransposed is the identity-conjugated transpose: normalize to transposed.
+        auto const op
+            = ad.transpose == Transpose::none ? oneapi::mkl::transpose::nontrans : oneapi::mkl::transpose::trans;
         auto alphaT = toOneMklScalar<T>(alpha);
         auto betaT = toOneMklScalar<T>(beta);
         auto const computeMode = oneMklComputeModeFor<T>(options);
@@ -591,7 +595,7 @@ namespace alpaka::blas::internal
                     return oneapi::mkl::blas::row_major::syrk(
                         q,
                         toOneMklUplo(cd.triangle),
-                        toOneMklTranspose(ad.transpose),
+                        op,
                         n,
                         k,
                         alphaT,
@@ -606,7 +610,7 @@ namespace alpaka::blas::internal
                 return oneapi::mkl::blas::row_major::syrk(
                     q,
                     toOneMklUplo(cd.triangle),
-                    toOneMklTranspose(ad.transpose),
+                    op,
                     n,
                     k,
                     alphaT,

@@ -7,6 +7,7 @@
 #include <alpakaTest/deviceHelper.hpp>
 #include <cmath>
 #include <concepts>
+#include <limits>
 #include <type_traits>
 #include <utility>
 
@@ -356,8 +357,7 @@ TEMPLATE_LIST_TEST_CASE(
         constexpr uint32_t n = 3u;
         constexpr uint32_t k = 3u;
 
-        // alpha=0: the selected triangle must stay exactly beta*C, even if the vendor routine reads A. A NaN A
-        // would contaminate the result.
+        // alpha=0: the selected triangle must stay exactly beta*C. A seeded with NaN must not be read.
         {
             auto A = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{n, k});
             auto C = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{n, n});
@@ -371,8 +371,34 @@ TEMPLATE_LIST_TEST_CASE(
                     CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}] == Catch::Approx(Scalar{6.0}).epsilon(1e-5f));
         }
 
-        // beta=0: the selected triangle must equal the reference computed from a zero C, even if the vendor routine
-        // reads the old C. A NaN C would contaminate the result.
+        // k=0: result is beta*C with A unread (A is NaN).
+        {
+            auto A = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{n, 0u});
+            auto C = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{n, n});
+            fillMatrixSentinel(C, n, n, Scalar{2.0});
+            auto upperC = alpaka::blas::upper(C);
+            alpaka::blas::onHost::syrk(queue, Scalar{1.0}, A, Scalar{3.0}, upperC, options);
+            alpaka::onHost::wait(queue);
+            for(uint32_t i = 0; i < n; ++i)
+                for(uint32_t j = i; j < n; ++j)
+                    CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}] == Catch::Approx(Scalar{6.0}).epsilon(1e-5f));
+        }
+
+        // alpha=0 and beta=0: the selected triangle becomes zero, old C NaN must not be read.
+        {
+            auto A = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{n, k});
+            auto C = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{n, n});
+            fillMatrixSentinel(A, n, k, std::nan(""));
+            fillMatrixSentinel(C, n, n, std::nan(""));
+            auto upperC = alpaka::blas::upper(C);
+            alpaka::blas::onHost::syrk(queue, Scalar{0.0}, A, Scalar{0.0}, upperC, options);
+            alpaka::onHost::wait(queue);
+            for(uint32_t i = 0; i < n; ++i)
+                for(uint32_t j = i; j < n; ++j)
+                    CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}] == Catch::Approx(Scalar{0.0}).epsilon(1e-5f));
+        }
+
+        // beta=0: the selected triangle must equal the reference computed from a zero C; old C NaN is not read.
         {
             auto A = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{n, k});
             auto C2 = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{n, n});
@@ -453,11 +479,83 @@ TEMPLATE_LIST_TEST_CASE("BLAS syrk validation rejects bad annotations", "[integr
         CHECK_THROWS_AS(
             alpaka::blas::onHost::syrk(queue, Scalar{1.0}, A, Scalar{1.0}, transposedUpperC),
             std::invalid_argument);
-        // conjTransposed(A) is real-only: must be rejected.
-        auto conjTransposedA = alpaka::blas::conjTransposed(A);
-        CHECK_THROWS_AS(
-            alpaka::blas::onHost::syrk(queue, Scalar{1.0}, conjTransposedA, Scalar{1.0}, upperC),
-            std::invalid_argument);
+    }
+}
+
+TEMPLATE_LIST_TEST_CASE(
+    "BLAS syrk conjTransposed equals transposed and read-only A",
+    "[integr][blas][rankk][syrk]",
+    TestBackends)
+{
+    auto deviceExec = getDeviceExecutorOrSkipTest(TestType::makeDict());
+    auto device = getDevice(deviceExec);
+    if constexpr(!isBlasBackendEnabledForDevice(device))
+    {
+        SKIP("No BLAS backend enabled for this alpaka API.");
+    }
+    else
+    {
+        auto queue = device.makeQueue();
+        auto const options = alpaka::blas::Options{
+            .precision = alpaka::blas::Precision::exact,
+            .algorithm = alpaka::blas::Algorithm::fastest};
+
+        constexpr uint32_t n = 3u;
+        constexpr uint32_t k = 4u;
+        // As-stored A is k x n; transposed/conjTransposed give an n x k operand.
+        auto runCase = [&](auto const& A, auto const& C)
+        {
+            using Scalar = std::remove_cv_t<alpaka::GetValueType_t<std::remove_cvref_t<decltype(A)>>>;
+            auto Ctrans = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{n, n});
+            auto Cconj = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{n, n});
+            for(uint32_t i = 0; i < n; ++i)
+                for(uint32_t j = 0; j < n; ++j)
+                {
+                    Ctrans[alpaka::Vec<uint32_t, 2u>{i, j}] = C[alpaka::Vec<uint32_t, 2u>{i, j}];
+                    Cconj[alpaka::Vec<uint32_t, 2u>{i, j}] = C[alpaka::Vec<uint32_t, 2u>{i, j}];
+                }
+            auto const transA = alpaka::blas::transposed(A);
+            auto const conjA = alpaka::blas::conjTransposed(A);
+            auto const upperCtrans = alpaka::blas::upper(Ctrans);
+            auto const upperCconj = alpaka::blas::upper(Cconj);
+            alpaka::blas::onHost::syrk(queue, Scalar{1.0}, transA, Scalar{0.5}, upperCtrans, options);
+            alpaka::blas::onHost::syrk(queue, Scalar{1.0}, conjA, Scalar{0.5}, upperCconj, options);
+            alpaka::onHost::wait(queue);
+            for(uint32_t i = 0; i < n; ++i)
+                for(uint32_t j = 0; j < n; ++j)
+                    CHECK(
+                        Ctrans[alpaka::Vec<uint32_t, 2u>{i, j}]
+                        == Catch::Approx(Cconj[alpaka::Vec<uint32_t, 2u>{i, j}]));
+        };
+
+        // float.
+        auto Af = alpaka::onHost::allocUnified<float>(device, alpaka::Vec<uint32_t, 2u>{k, n});
+        auto Cf = alpaka::onHost::allocUnified<float>(device, alpaka::Vec<uint32_t, 2u>{n, n});
+        fillMatrix(Af, k, n);
+        fillMatrix(Cf, n, n);
+        runCase(Af, Cf);
+
+        // double.
+        if constexpr(supportsDoubleSyrk(device))
+        {
+            auto Ad = alpaka::onHost::allocUnified<double>(device, alpaka::Vec<uint32_t, 2u>{k, n});
+            auto Cd = alpaka::onHost::allocUnified<double>(device, alpaka::Vec<uint32_t, 2u>{n, n});
+            fillMatrix(Ad, k, n);
+            fillMatrix(Cd, n, n);
+            runCase(Ad, Cd);
+        }
+
+        // Read-only A (MdSpan<float const>) dispatches through the cv-stripped Value_t path.
+        auto Aro = alpaka::onHost::allocUnified<float>(device, alpaka::Vec<uint32_t, 2u>{k, n});
+        auto Cro = alpaka::onHost::allocUnified<float>(device, alpaka::Vec<uint32_t, 2u>{n, n});
+        fillMatrix(Aro, k, n);
+        fillMatrix(Cro, n, n);
+        alpaka::onHost::wait(queue);
+        auto const Areadonly = alpaka::makeMdSpan(
+            static_cast<float const*>(Aro.data()),
+            alpaka::Vec<uint32_t, 2u>{k, n},
+            alpaka::Vec<std::size_t, 2u>{n * sizeof(float), sizeof(float)});
+        runCase(Areadonly, Cro);
     }
 }
 
@@ -542,5 +640,88 @@ TEMPLATE_LIST_TEST_CASE(
         for(std::size_t i = 0; i < n; ++i)
             for(std::size_t j = k; j < ldA; ++j)
                 CHECK(Astorage.data()[i * ldA + j] == Acopy.data()[i * ldA + j]);
+    }
+}
+
+TEMPLATE_LIST_TEST_CASE(
+    "BLAS syrk degenerate n==0 is a no-op and degenerate kernels are queue-ordered",
+    "[integr][blas][rankk][syrk]",
+    TestBackends)
+{
+    auto deviceExec = getDeviceExecutorOrSkipTest(TestType::makeDict());
+    auto device = getDevice(deviceExec);
+    if constexpr(!isBlasBackendEnabledForDevice(device))
+    {
+        SKIP("No BLAS backend enabled for this alpaka API.");
+    }
+    else
+    {
+        auto queue = device.makeQueue();
+        using Scalar = float;
+
+        // n==0: no data access, no exception, C untouched.
+        {
+            auto A = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{0u, 3u});
+            auto C = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{0u, 0u});
+            auto upperC = alpaka::blas::upper(C);
+            alpaka::blas::onHost::syrk(queue, Scalar{1.0}, A, Scalar{1.0}, upperC);
+            alpaka::onHost::wait(queue);
+            SUCCEED("n==0 syrk is a valid no-op.");
+        }
+
+        // Queue ordering: two enqueued degenerate syrk calls must be serialized in order.
+        {
+            constexpr uint32_t n = 3u;
+            constexpr uint32_t k = 2u;
+            auto A = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{n, k});
+            auto C = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{n, n});
+            fillMatrix(A, n, k);
+            fillMatrixSentinel(C, n, n, Scalar{1.0});
+            auto upperC = alpaka::blas::upper(C);
+            // First: C <- 0*A*A^T + 2*C  => triangle is 2.0.
+            alpaka::blas::onHost::syrk(queue, Scalar{0.0}, A, Scalar{2.0}, upperC);
+            // Second: C <- 0*A*A^T + 3*C  => triangle is 6.0.
+            alpaka::blas::onHost::syrk(queue, Scalar{0.0}, A, Scalar{3.0}, upperC);
+            alpaka::onHost::wait(queue);
+            for(uint32_t i = 0; i < n; ++i)
+                for(uint32_t j = i; j < n; ++j)
+                    CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}] == Catch::Approx(Scalar{6.0}).epsilon(1e-5f));
+        }
+    }
+}
+
+TEMPLATE_LIST_TEST_CASE(
+    "BLAS syrk oversized dimensions rejected by checkedCast",
+    "[integr][blas][rankk][syrk]",
+    TestBackends)
+{
+    auto deviceExec = getDeviceExecutorOrSkipTest(TestType::makeDict());
+    auto device = getDevice(deviceExec);
+    if constexpr(!isBlasBackendEnabledForDevice(device))
+    {
+        SKIP("No BLAS backend enabled for this alpaka API.");
+    }
+    else
+    {
+        auto queue = device.makeQueue();
+        using Scalar = float;
+        constexpr uint32_t n = 3u;
+        constexpr uint32_t k = 3u;
+        // An enormous leading dimension: the pitch overflows the vendor int parameters.
+        constexpr std::size_t hugeLd = static_cast<std::size_t>(std::numeric_limits<uint32_t>::max()) + 2u;
+        auto Astorage = alpaka::onHost::allocUnified<Scalar>(device, 16u);
+        auto Cstorage = alpaka::onHost::allocUnified<Scalar>(device, 16u);
+        auto A = alpaka::makeMdSpan(
+            Astorage.data(),
+            alpaka::Vec<uint32_t, 2u>{n, k},
+            alpaka::Vec<std::size_t, 2u>{hugeLd * sizeof(Scalar), sizeof(Scalar)});
+        auto C = alpaka::makeMdSpan(
+            Cstorage.data(),
+            alpaka::Vec<uint32_t, 2u>{n, n},
+            alpaka::Vec<std::size_t, 2u>{hugeLd * sizeof(Scalar), sizeof(Scalar)});
+        // Deliberately fill neither view: the enormous pitch means any element write would overflow the tiny backing
+        // storage. syrk must reject the oversized leading dimension from metadata alone, before any data access.
+        auto upperC = alpaka::blas::upper(C);
+        CHECK_THROWS_AS(alpaka::blas::onHost::syrk(queue, Scalar{1.0}, A, Scalar{1.0}, upperC), std::invalid_argument);
     }
 }

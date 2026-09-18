@@ -899,6 +899,10 @@ namespace alpaka::blas::internal
         auto const cd = makeMatrixDescriptor(C);
         auto const n = ad.transpose == Transpose::none ? ad.rows : ad.cols;
         auto const k = ad.transpose == Transpose::none ? ad.cols : ad.rows;
+        auto const nInt = checkedCast<int>(n, "syrk n");
+        auto const kInt = checkedCast<int>(k, "syrk k");
+        auto const adLd = checkedCast<int>(ad.ld, "syrk A ld");
+        auto const cdLd = checkedCast<int>(cd.ld, "syrk C ld");
         queue.enqueueNativeFn(
             [=](cudaStream_t nativeStream)
             {
@@ -919,14 +923,14 @@ namespace alpaka::blas::internal
                             handle,
                             toCublasFill(colTriangle),
                             colOp,
-                            int(n),
-                            int(k),
+                            nInt,
+                            kInt,
                             &alphaT,
                             static_cast<float const*>(ad.constPtr),
-                            int(ad.ld),
+                            adLd,
                             &betaT,
                             static_cast<float*>(cd.mutPtr),
-                            int(cd.ld)),
+                            cdLd),
                         "cublasSsyrk");
                 else
                     check(
@@ -934,14 +938,14 @@ namespace alpaka::blas::internal
                             handle,
                             toCublasFill(colTriangle),
                             colOp,
-                            int(n),
-                            int(k),
+                            nInt,
+                            kInt,
                             &alphaT,
                             static_cast<double const*>(ad.constPtr),
-                            int(ad.ld),
+                            adLd,
                             &betaT,
                             static_cast<double*>(cd.mutPtr),
-                            int(cd.ld)),
+                            cdLd),
                         "cublasDsyrk");
             });
     }

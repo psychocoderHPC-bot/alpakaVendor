@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <stdexcept>
 #include <string>
 #include <type_traits>
 
@@ -22,7 +23,7 @@ namespace alpaka::blas::internal
     using alpaka::blas::detail::getView;
 
     template<typename T>
-    using Value_t = alpaka::GetValueType_t<detail::unannotated_t<T>>;
+    using Value_t = std::remove_cv_t<alpaka::GetValueType_t<detail::unannotated_t<T>>>;
 
     template<typename T>
     constexpr bool isSupportedScalar_v = Scalar<Value_t<T>>;
@@ -280,13 +281,17 @@ namespace alpaka::blas::internal
     template<typename T_A, typename T_C>
     inline void validateSyrk(T_A const& A, T_C const& C)
     {
+        static_assert(
+            std::same_as<Value_t<T_A>, Value_t<T_C>>,
+            "syrk requires A and C to have the same element type.");
+        static_assert(
+            !std::is_const_v<alpaka::GetValueType_t<detail::unannotated_t<T_C>>>,
+            "syrk requires a writable C view (element type must not be const).");
         auto const ad = makeMatrixDescriptor(A);
         auto const cd = makeMatrixDescriptor(C);
         // A is a general dense matrix: reject triangle/unit-diagonal annotations.
         if(ad.triangle != Triangle::full)
             throw std::invalid_argument("syrk requires a general dense A without a triangle annotation.");
-        if(ad.transpose == Transpose::conjugateTransposed)
-            throw std::invalid_argument("syrk is real-only; use transposed(A) instead of conjTransposed(A).");
         if(ad.diagonal != Diagonal::nonUnit)
             throw std::invalid_argument("syrk requires a general dense A without a unit-diagonal annotation.");
         // C must carry an explicit upper/lower selection.
