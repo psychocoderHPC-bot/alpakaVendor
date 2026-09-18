@@ -114,6 +114,40 @@ namespace alpakaVendor::test::blas
         return sum;
     }
 
+    // Real symmetric rank-k update: writes the selected triangle of
+    // C = alpha * M * M^T + beta * C where M = op(A) is n x k.
+    // The opposite triangle and padding are left unchanged.
+    template<typename T>
+    inline void syrkRef(
+        T alpha,
+        T const* a,
+        std::size_t lda,
+        std::size_t aRows,
+        std::size_t aCols,
+        alpaka::blas::Transpose trans,
+        T beta,
+        T* c,
+        std::size_t ldc,
+        std::size_t n,
+        alpaka::blas::Triangle triangle)
+    {
+        auto const k = trans == alpaka::blas::Transpose::none ? aCols : aRows;
+        for(std::size_t i = 0; i < n; ++i)
+        {
+            auto const inTri = [triangle](std::size_t r, std::size_t col)
+            { return triangle == alpaka::blas::Triangle::upper ? col >= r : col <= r; };
+            for(std::size_t j = 0; j < n; ++j)
+            {
+                if(!inTri(i, j))
+                    continue;
+                T sum{};
+                for(std::size_t kk = 0; kk < k; ++kk)
+                    sum += applyTranspose(a, lda, i, kk, trans) * applyTranspose(a, lda, j, kk, trans);
+                c[i * ldc + j] = alpha * sum + beta * c[i * ldc + j];
+            }
+        }
+    }
+
     template<typename T>
     inline auto nrm2Ref(T const* x, std::size_t n)
     {

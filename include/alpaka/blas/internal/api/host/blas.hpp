@@ -680,5 +680,53 @@ namespace alpaka::blas::internal
                         int(bd.ld));
             });
     }
+
+    template<alpaka::concepts::DeviceKind T_DeviceKind>
+    void alpakaFnDispatch(
+        SyrkFn::Spec<alpaka::api::Host, T_DeviceKind>,
+        auto&& queue,
+        auto alpha,
+        auto const& A,
+        auto beta,
+        auto& C,
+        [[maybe_unused]] Options options)
+    {
+        using T = Value_t<ALPAKA_TYPEOF(A)>;
+        static_assert(RealScalar<T>, "syrk supports only real scalar types.");
+        auto const ad = makeMatrixDescriptor(A);
+        auto const cd = makeMatrixDescriptor(C);
+        auto const n = ad.transpose == Transpose::none ? ad.rows : ad.cols;
+        auto const k = ad.transpose == Transpose::none ? ad.cols : ad.rows;
+        queue.enqueueNativeFn(
+            [=](auto)
+            {
+                if constexpr(std::same_as<T, float>)
+                    cblas_ssyrk(
+                        CblasRowMajor,
+                        toCblasUplo(cd.triangle),
+                        toCblasTranspose(ad.transpose),
+                        int(n),
+                        int(k),
+                        static_cast<float>(alpha),
+                        static_cast<float const*>(ad.constPtr),
+                        int(ad.ld),
+                        static_cast<float>(beta),
+                        static_cast<float*>(cd.mutPtr),
+                        int(cd.ld));
+                else
+                    cblas_dsyrk(
+                        CblasRowMajor,
+                        toCblasUplo(cd.triangle),
+                        toCblasTranspose(ad.transpose),
+                        int(n),
+                        int(k),
+                        static_cast<double>(alpha),
+                        static_cast<double const*>(ad.constPtr),
+                        int(ad.ld),
+                        static_cast<double>(beta),
+                        static_cast<double*>(cd.mutPtr),
+                        int(cd.ld));
+            });
+    }
 } // namespace alpaka::blas::internal
 #endif

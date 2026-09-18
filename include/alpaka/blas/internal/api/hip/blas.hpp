@@ -946,5 +946,66 @@ namespace alpaka::blas::internal
                         "rocblas_ztrsm");
             });
     }
+
+    void alpakaFnDispatch(
+        SyrkFn::Spec<alpaka::api::Hip, alpaka::deviceKind::AmdGpu>,
+        auto&& queue,
+        auto alpha,
+        auto const& A,
+        auto beta,
+        auto& C,
+        [[maybe_unused]] Options options)
+    {
+        using T = Value_t<ALPAKA_TYPEOF(A)>;
+        static_assert(RealScalar<T>, "syrk supports only real scalar types.");
+        auto const ad = makeMatrixDescriptor(A);
+        auto const cd = makeMatrixDescriptor(C);
+        auto const n = ad.transpose == Transpose::none ? ad.rows : ad.cols;
+        auto const k = ad.transpose == Transpose::none ? ad.cols : ad.rows;
+        queue.enqueueNativeFn(
+            [=](hipStream_t nativeStream)
+            {
+                RocblasHandle rocblas{nativeStream};
+                auto handle = rocblas.handle;
+                setPointerMode<T>(handle);
+                T alphaT = static_cast<T>(alpha);
+                T betaT = static_cast<T>(beta);
+                // Row-major C = alpha*M*M^T + beta*C is, seen column-major, D = C^T.
+                // rocBLAS syrk computes D = op(B)*op(B)^T, so pass op(B)=M^T when A is as-stored.
+                auto const colOp = ad.transpose == Transpose::none ? rocblas_operation_transpose
+                                                                   : rocblas_operation_none;
+                auto const colTriangle = swappedTriangle(cd.triangle);
+                if constexpr(std::same_as<T, float>)
+                    check(
+                        rocblas_ssyrk(
+                            handle,
+                            toRocblasFill(colTriangle),
+                            colOp,
+                            n,
+                            k,
+                            &alphaT,
+                            static_cast<float const*>(ad.constPtr),
+                            ad.ld,
+                            &betaT,
+                            static_cast<float*>(cd.mutPtr),
+                            cd.ld),
+                        "rocblas_ssyrk");
+                else
+                    check(
+                        rocblas_dsyrk(
+                            handle,
+                            toRocblasFill(colTriangle),
+                            colOp,
+                            n,
+                            k,
+                            &alphaT,
+                            static_cast<double const*>(ad.constPtr),
+                            ad.ld,
+                            &betaT,
+                            static_cast<double*>(cd.mutPtr),
+                            cd.ld),
+                        "rocblas_dsyrk");
+            });
+    }
 } // namespace alpaka::blas::internal
 #endif

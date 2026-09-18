@@ -562,5 +562,60 @@ namespace alpaka::blas::internal
             });
     }
 
+    template<alpaka::concepts::DeviceKind T_DeviceKind>
+    void alpakaFnDispatch(
+        SyrkFn::Spec<alpaka::api::OneApi, T_DeviceKind>,
+        auto&& queue,
+        auto alpha,
+        auto const& A,
+        auto beta,
+        auto& C,
+        Options options)
+    {
+        using T = Value_t<ALPAKA_TYPEOF(A)>;
+        static_assert(RealScalar<T>, "syrk supports only real scalar types.");
+        auto const ad = makeMatrixDescriptor(A);
+        auto const cd = makeMatrixDescriptor(C);
+        auto const n = ad.transpose == Transpose::none ? ad.rows : ad.cols;
+        auto const k = ad.transpose == Transpose::none ? ad.cols : ad.rows;
+        auto alphaT = toOneMklScalar<T>(alpha);
+        auto betaT = toOneMklScalar<T>(beta);
+        auto const computeMode = oneMklComputeModeFor<T>(options);
+        queue.enqueueNativeFn(
+            [=](sycl::queue q) -> sycl::event
+            {
+                auto deps = std::vector<sycl::event>{q.ext_oneapi_submit_barrier()};
+                if(computeMode.has_value())
+                    return oneapi::mkl::blas::row_major::syrk(
+                        q,
+                        toOneMklUplo(cd.triangle),
+                        toOneMklTranspose(ad.transpose),
+                        n,
+                        k,
+                        alphaT,
+                        oneMklPtr<T>(ad.constPtr),
+                        ad.ld,
+                        betaT,
+                        oneMklPtr<T>(cd.mutPtr),
+                        cd.ld,
+                        *computeMode,
+                        deps);
+
+                return oneapi::mkl::blas::row_major::syrk(
+                    q,
+                    toOneMklUplo(cd.triangle),
+                    toOneMklTranspose(ad.transpose),
+                    n,
+                    k,
+                    alphaT,
+                    oneMklPtr<T>(ad.constPtr),
+                    ad.ld,
+                    betaT,
+                    oneMklPtr<T>(cd.mutPtr),
+                    cd.ld,
+                    deps);
+            });
+    }
+
 } // namespace alpaka::blas::internal
 #endif

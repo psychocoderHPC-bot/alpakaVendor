@@ -277,6 +277,30 @@ namespace alpaka::blas::internal
             throw std::invalid_argument("trsm right requires A.rows == B.cols.");
     }
 
+    template<typename T_A, typename T_C>
+    inline void validateSyrk(T_A const& A, T_C const& C)
+    {
+        auto const ad = makeMatrixDescriptor(A);
+        auto const cd = makeMatrixDescriptor(C);
+        // A is a general dense matrix: reject triangle/unit-diagonal annotations.
+        if(ad.triangle != Triangle::full)
+            throw std::invalid_argument("syrk requires a general dense A without a triangle annotation.");
+        if(ad.diagonal != Diagonal::nonUnit)
+            throw std::invalid_argument("syrk requires a general dense A without a unit-diagonal annotation.");
+        // C must carry an explicit upper/lower selection.
+        if(cd.triangle == Triangle::full)
+            throw std::invalid_argument("syrk requires upper(C) or lower(C).");
+        // C must not be transposed or unit-diagonal.
+        if(cd.transpose != Transpose::none)
+            throw std::invalid_argument("syrk rejects a transposed C.");
+        if(cd.diagonal != Diagonal::nonUnit)
+            throw std::invalid_argument("syrk rejects a unit-diagonal C.");
+        // op(A) is n x k; C must be n x n.
+        auto const n = getTranspose(A) == Transpose::none ? ad.rows : ad.cols;
+        if(cd.rows != n || cd.cols != n)
+            throw std::invalid_argument("syrk requires C to be n x n where n is op(A) rows.");
+    }
+
     template<typename T>
     constexpr auto zeroValue()
     {
