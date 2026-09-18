@@ -37,8 +37,10 @@ TEMPLATE_LIST_TEST_CASE(
         auto result2 = alpaka::onHost::allocUnified<float>(device, 2u);
         auto y4 = alpaka::onHost::allocUnified<float>(device, 4u);
         CHECK_THROWS_AS(alpaka::blas::onHost::dot(queue, x, y, result2), std::invalid_argument);
+        CHECK_THROWS_AS(alpaka::blas::onHost::dotc(queue, x, y, result2), std::invalid_argument);
         CHECK_THROWS_AS(alpaka::blas::onHost::nrm2(queue, x, result2), std::invalid_argument);
         CHECK_THROWS_AS(alpaka::blas::onHost::dot(queue, x, y4, result2), std::invalid_argument);
+        CHECK_THROWS_AS(alpaka::blas::onHost::dotc(queue, x, y4, result2), std::invalid_argument);
         CHECK_THROWS_AS(alpaka::blas::onHost::gemv(queue, 1.0f, A, x, 0.0f, y), std::invalid_argument);
 
         auto rhs = alpaka::onHost::allocUnified<float>(device, alpaka::Vec<uint32_t, 2u>{2u, 1u});

@@ -446,6 +446,72 @@ namespace alpaka::blas::internal
     }
 
     void alpakaFnDispatch(
+        DotcFn::Spec<alpaka::api::Cuda, alpaka::deviceKind::NvidiaGpu>,
+        auto&& queue,
+        auto const& x,
+        auto const& y,
+        auto& result,
+        Options options)
+    {
+        using T = Value_t<ALPAKA_TYPEOF(x)>;
+        auto const xd = makeVectorDescriptor(x);
+        auto const yd = makeVectorDescriptor(y);
+        auto* resultPtr = alpaka::onHost::data(getView(result));
+        queue.enqueueNativeFn(
+            [=](cudaStream_t nativeStream)
+            {
+                CublasHandle cublas{nativeStream};
+                auto handle = cublas.handle;
+                setMathMode<T>(handle, options);
+                check(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_DEVICE), "cublasSetPointerMode");
+                if constexpr(std::same_as<T, float>)
+                    check(
+                        cublasSdot(
+                            handle,
+                            int(xd.n),
+                            static_cast<float const*>(xd.constPtr),
+                            int(xd.inc),
+                            static_cast<float const*>(yd.constPtr),
+                            int(yd.inc),
+                            resultPtr),
+                        "cublasSdot");
+                else if constexpr(std::same_as<T, double>)
+                    check(
+                        cublasDdot(
+                            handle,
+                            int(xd.n),
+                            static_cast<double const*>(xd.constPtr),
+                            int(xd.inc),
+                            static_cast<double const*>(yd.constPtr),
+                            int(yd.inc),
+                            resultPtr),
+                        "cublasDdot");
+                else if constexpr(std::same_as<T, alpaka::math::Complex<float>>)
+                    check(
+                        cublasCdotc(
+                            handle,
+                            int(xd.n),
+                            reinterpret_cast<cuComplex const*>(xd.constPtr),
+                            int(xd.inc),
+                            reinterpret_cast<cuComplex const*>(yd.constPtr),
+                            int(yd.inc),
+                            reinterpret_cast<cuComplex*>(resultPtr)),
+                        "cublasCdotc");
+                else
+                    check(
+                        cublasZdotc(
+                            handle,
+                            int(xd.n),
+                            reinterpret_cast<cuDoubleComplex const*>(xd.constPtr),
+                            int(xd.inc),
+                            reinterpret_cast<cuDoubleComplex const*>(yd.constPtr),
+                            int(yd.inc),
+                            reinterpret_cast<cuDoubleComplex*>(resultPtr)),
+                        "cublasZdotc");
+            });
+    }
+
+    void alpakaFnDispatch(
         Nrm2Fn::Spec<alpaka::api::Cuda, alpaka::deviceKind::NvidiaGpu>,
         auto&& queue,
         auto const& x,

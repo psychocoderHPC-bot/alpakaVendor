@@ -414,6 +414,71 @@ namespace alpaka::blas::internal
     }
 
     void alpakaFnDispatch(
+        DotcFn::Spec<alpaka::api::Hip, alpaka::deviceKind::AmdGpu>,
+        auto&& queue,
+        auto const& x,
+        auto const& y,
+        auto& result,
+        [[maybe_unused]] Options options)
+    {
+        using T = Value_t<ALPAKA_TYPEOF(x)>;
+        auto const xd = makeVectorDescriptor(x);
+        auto const yd = makeVectorDescriptor(y);
+        auto* resultPtr = alpaka::onHost::data(getView(result));
+        queue.enqueueNativeFn(
+            [=](hipStream_t nativeStream)
+            {
+                RocblasHandle rocblas{nativeStream};
+                auto handle = rocblas.handle;
+                setPointerMode<T>(handle);
+                if constexpr(std::same_as<T, float>)
+                    check(
+                        rocblas_sdot(
+                            handle,
+                            xd.n,
+                            static_cast<float const*>(xd.constPtr),
+                            xd.inc,
+                            static_cast<float const*>(yd.constPtr),
+                            yd.inc,
+                            resultPtr),
+                        "rocblas_sdot");
+                else if constexpr(std::same_as<T, double>)
+                    check(
+                        rocblas_ddot(
+                            handle,
+                            xd.n,
+                            static_cast<double const*>(xd.constPtr),
+                            xd.inc,
+                            static_cast<double const*>(yd.constPtr),
+                            yd.inc,
+                            resultPtr),
+                        "rocblas_ddot");
+                else if constexpr(std::same_as<T, alpaka::math::Complex<float>>)
+                    check(
+                        rocblas_cdotc(
+                            handle,
+                            xd.n,
+                            reinterpret_cast<rocblas_float_complex const*>(xd.constPtr),
+                            xd.inc,
+                            reinterpret_cast<rocblas_float_complex const*>(yd.constPtr),
+                            yd.inc,
+                            reinterpret_cast<rocblas_float_complex*>(resultPtr)),
+                        "rocblas_cdotc");
+                else
+                    check(
+                        rocblas_zdotc(
+                            handle,
+                            xd.n,
+                            reinterpret_cast<rocblas_double_complex const*>(xd.constPtr),
+                            xd.inc,
+                            reinterpret_cast<rocblas_double_complex const*>(yd.constPtr),
+                            yd.inc,
+                            reinterpret_cast<rocblas_double_complex*>(resultPtr)),
+                        "rocblas_zdotc");
+            });
+    }
+
+    void alpakaFnDispatch(
         Nrm2Fn::Spec<alpaka::api::Hip, alpaka::deviceKind::AmdGpu>,
         auto&& queue,
         auto const& x,
