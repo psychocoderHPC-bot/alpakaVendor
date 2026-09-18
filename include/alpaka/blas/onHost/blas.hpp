@@ -294,4 +294,60 @@ namespace alpaka::blas::onHost
         internal::validateTrsm(side, A, B);
         internal::TrsmFn::call(queue, side, alpha, A, B, options);
     }
+
+    /**
+     * Hermitian rank-k update.
+     *
+     * Computes the selected triangle of ``C = alpha * M * conjTranspose(M) + beta * C`` where ``M = op(A)`` has shape
+     * ``n x k`` and ``C`` is ``n x n``.
+     *
+     * Only complex scalar types (``alpaka::math::Complex<float>`` and ``alpaka::math::Complex<double>``) are
+     * supported.
+     * ``A`` and ``C`` must share the same complex element type.
+     *
+     * ``alpha`` and ``beta`` must be real values convertible to ``Real_t<T>``; complex coefficients are rejected
+     * (including ones with a zero imaginary part). ``A`` is a general dense matrix and may be annotated
+     * ``conjTransposed(A)`` (or left plain); the plain ``transposed(A)`` annotation is rejected because it is not a
+     * standard HERK operation. ``C`` must carry an explicit ``upper(C)`` or ``lower(C)`` selection; the opposite
+     * triangle and any padding are left unchanged. Transpose and unit-diagonal annotations on ``C`` are rejected.
+     *
+     * On an actual update the written diagonal is real (its imaginary part is ignored). A true no-op (``n == 0``, or a
+     * zero product contribution combined with ``beta == 1``) may leave ``C`` unchanged, including its diagonal; no
+     * unconditional diagonal canonicalization is promised. No special zero-scalar fast path is guaranteed, so ``k ==
+     * 0`` or ``alpha == 0`` are not guaranteed to leave the old selected triangle unread, and ``beta == 0`` is not
+     * guaranteed to skip reading the old selected ``C`` values.
+     *
+     * ``A`` and ``C`` must not overlap.
+     *
+     * The real-valued counterpart is ``syrk``.
+     *
+     * @param queue alpaka queue that defines when the work runs.
+     * @param alpha real scalar multiplier for the rank-k product.
+     * @param A input matrix, optionally ``conjTransposed(A)``.
+     * @param beta real scalar multiplier applied to the selected triangle of the existing ``C``.
+     * @param C input/output result matrix, annotated ``upper(C)`` or ``lower(C)``.
+     * @param options optional backend hints.
+     */
+    void herk(
+        auto& queue,
+        auto alpha,
+        concepts::MatrixView auto const& A,
+        auto beta,
+        concepts::MatrixView auto& C,
+        Options options = {})
+    {
+        using T = internal::Value_t<ALPAKA_TYPEOF(A)>;
+        static_assert(ComplexScalar<T>, "herk supports only complex scalar types.");
+        static_assert(
+            std::same_as<T, internal::Value_t<ALPAKA_TYPEOF(C)>>,
+            "herk requires A and C to have the same element type.");
+        static_assert(
+            RealScalar<std::remove_cv_t<decltype(alpha)>>,
+            "herk requires a real alpha, not a complex coefficient.");
+        static_assert(
+            RealScalar<std::remove_cv_t<decltype(beta)>>,
+            "herk requires a real beta, not a complex coefficient.");
+        internal::validateHerk(A, C);
+        internal::HerkFn::call(queue, alpha, A, beta, C, options);
+    }
 } // namespace alpaka::blas::onHost

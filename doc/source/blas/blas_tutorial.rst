@@ -85,7 +85,21 @@ In this example:
 - ``lower(triangular)`` says only the lower half matters
 - ``unitDiag(...)`` says the diagonal is implicitly one
 
-Step 6: Strided batched GEMM
+Step 6: Hermitian rank-k update
+--------------------------------
+
+``herk`` is the complex counterpart of ``syrk``: it computes the selected triangle of
+``C = alpha * op(A) * conjTranspose(op(A)) + beta * C``. The scalar coefficients must be real, ``A`` may be passed
+as-is or as ``conjTransposed(A)`` (plain ``transposed(A)`` is not a standard HERK operation), and ``C`` must be
+annotated ``upper(C)`` or ``lower(C)``. The result is Hermitian with a real diagonal, so on an actual update the
+written diagonal's imaginary part is discarded.
+
+.. literalinclude:: ../../../doc/code/tutorial_blas.cpp
+   :language: C++
+   :start-after: //! [blas-tutorial-herk]
+   :end-before: //! [blas-tutorial-herk]
+
+Step 7: Strided batched GEMM
 ----------------------------
 
 If your data already lives in a ``[batch, row, column]`` view, ``stridedBatchedGemm`` applies the same matrix product
