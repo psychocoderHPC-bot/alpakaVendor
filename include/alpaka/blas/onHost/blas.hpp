@@ -104,6 +104,32 @@ namespace alpaka::blas::onHost
     }
 
     /**
+     * Compute the conjugated dot product.
+     *
+     * Computes ``result[0] = sum_i conj(x[i]) * y[i]``. The first operand is conjugated; the second is not. For
+     * real-valued vectors this is identical to ``dot``. For complex-valued vectors it differs from ``dot``, which
+     * leaves both operands unconjugated.
+     *
+     * @param queue alpaka queue that defines when the work runs.
+     * @param x first input vector, conjugated before multiplication.
+     * @param y second input vector, used as-is.
+     * @param result single-element output view that receives the scalar result.
+     * @param options optional backend hints.
+     */
+    void dotc(
+        auto& queue,
+        concepts::VectorView auto const& x,
+        concepts::VectorView auto const& y,
+        concepts::VectorView auto& result,
+        Options options = {})
+    {
+        internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(x)>>();
+        internal::validateSameVectorExtent(x, y, "dotc");
+        internal::validateScalarResult(x, result, "dotc");
+        internal::DotcFn::call(queue, x, y, result, options);
+    }
+
+    /**
      * Compute the Euclidean norm of a vector.
      *
      * Computes ``result[0] = ||x||_2``.

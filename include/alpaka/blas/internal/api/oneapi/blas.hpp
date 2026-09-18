@@ -264,6 +264,46 @@ namespace alpaka::blas::internal
 
     template<alpaka::concepts::DeviceKind T_DeviceKind>
     void alpakaFnDispatch(
+        DotcFn::Spec<alpaka::api::OneApi, T_DeviceKind>,
+        auto&& queue,
+        auto const& x,
+        auto const& y,
+        auto& result,
+        [[maybe_unused]] Options options)
+    {
+        using T = Value_t<ALPAKA_TYPEOF(x)>;
+        auto const xd = makeVectorDescriptor(x);
+        auto const yd = makeVectorDescriptor(y);
+        auto* resultPtr = alpaka::onHost::data(getView(result));
+        queue.enqueueNativeFn(
+            [=](sycl::queue q) -> sycl::event
+            {
+                auto deps = std::vector<sycl::event>{q.ext_oneapi_submit_barrier()};
+                if constexpr(ComplexScalar<T>)
+                    return oneapi::mkl::blas::dotc(
+                        q,
+                        xd.n,
+                        oneMklPtr<T>(xd.constPtr),
+                        xd.inc,
+                        oneMklPtr<T>(yd.constPtr),
+                        yd.inc,
+                        oneMklValuePtr(resultPtr),
+                        deps);
+                else
+                    return oneapi::mkl::blas::dot(
+                        q,
+                        xd.n,
+                        oneMklPtr<T>(xd.constPtr),
+                        xd.inc,
+                        oneMklPtr<T>(yd.constPtr),
+                        yd.inc,
+                        oneMklValuePtr(resultPtr),
+                        deps);
+            });
+    }
+
+    template<alpaka::concepts::DeviceKind T_DeviceKind>
+    void alpakaFnDispatch(
         Nrm2Fn::Spec<alpaka::api::OneApi, T_DeviceKind>,
         auto&& queue,
         auto const& x,

@@ -56,6 +56,7 @@ TEMPLATE_LIST_TEST_CASE("Tutorial: BLAS walkthrough", "[doc][tutorial][blas]", T
         alpaka::blas::onHost::scal(queue, 2.0f, z);
         alpaka::blas::onHost::axpy(queue, -1.0f, y, x);
         alpaka::blas::onHost::dot(queue, y, z, dotResult);
+        alpaka::blas::onHost::dotc(queue, y, z, dotResult);
         alpaka::blas::onHost::nrm2(queue, y, nrm2Result);
         alpaka::blas::onHost::asum(queue, x, asumResult);
         alpaka::blas::onHost::iamax(queue, x, iamaxResult);

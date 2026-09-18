@@ -16,6 +16,7 @@ namespace alpaka::blas::internal
     ALPAKA_FN_SYMBOL(ScalFn);
     ALPAKA_FN_SYMBOL(AxpyFn);
     ALPAKA_FN_SYMBOL(DotFn);
+    ALPAKA_FN_SYMBOL(DotcFn);
     ALPAKA_FN_SYMBOL(Nrm2Fn);
     ALPAKA_FN_SYMBOL(AsumFn);
     ALPAKA_FN_SYMBOL(IamaxFn);
