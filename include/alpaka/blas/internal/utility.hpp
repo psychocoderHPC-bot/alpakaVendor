@@ -22,7 +22,7 @@ namespace alpaka::blas::internal
     using alpaka::blas::detail::getView;
 
     template<typename T>
-    using Value_t = alpaka::GetValueType_t<detail::unannotated_t<T>>;
+    using Value_t = std::remove_cv_t<alpaka::GetValueType_t<detail::unannotated_t<T>>>;
 
     template<typename T>
     constexpr bool isSupportedScalar_v = Scalar<Value_t<T>>;

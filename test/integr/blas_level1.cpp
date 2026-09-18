@@ -4,6 +4,8 @@
  */
 
 #include <algorithm>
+#include <utility>
+#include <vector>
 #include <alpakaTest/deviceHelper.hpp>
 
 #include "../unit/blas/reference.hpp"
@@ -146,6 +148,85 @@ TEMPLATE_LIST_TEST_CASE("BLAS level1 dotc conjugated dot product", "[integr][bla
             alpaka::blas::onHost::dotc(queue, xr, yr, dotcReal, options);
             alpaka::onHost::wait(queue);
             CHECK(dotcReal.data()[0] == Catch::Approx(blas::dotRef(xr.data(), yr.data(), n)).epsilon(1e-4));
+        }
+
+        // Read-only inputs: dotc must accept vector views with const element type for every supported scalar. The
+        // descriptor scalar type is cv-stripped centrally, so a `MdSpan<const T>` selects the same backend branch as
+        // the writable `MdSpan<T>` (regression guard for issue 8's common-element-type / cv-qualified dispatch).
+        {
+            using T = float;
+            auto nx = alpaka::onHost::allocUnified<T>(device, n);
+            auto ny = alpaka::onHost::allocUnified<T>(device, n);
+            fillVector(nx.data(), n);
+            fillVector(ny.data(), n);
+            if constexpr(std::same_as<ALPAKA_TYPEOF(device.getApi()), alpaka::api::Host>)
+            {
+                auto xConst = alpaka::makeMdSpan(
+                    static_cast<T const*>(nx.data()),
+                    alpaka::Vec<std::size_t, 1u>{n});
+                auto yConst = alpaka::makeMdSpan(
+                    static_cast<T const*>(ny.data()),
+                    alpaka::Vec<std::size_t, 1u>{n});
+                auto dotcRO = alpaka::onHost::allocUnified<T>(device, 1u);
+                alpaka::blas::onHost::dotc(queue, xConst, yConst, dotcRO, options);
+                alpaka::onHost::wait(queue);
+                CHECK(dotcRO.data()[0] == Catch::Approx(blas::dotcRef(nx.data(), ny.data(), n)).epsilon(1e-4));
+            }
+        }
+
+        // Single-element reduction over a complex pair: dotc([a+bi],[c+di]) = conj(a+bi)*(c+di).
+        {
+            using C1 = alpaka::math::Complex<double>;
+            auto xs = alpaka::onHost::allocUnified<C1>(device, 1u);
+            auto ys = alpaka::onHost::allocUnified<C1>(device, 1u);
+            auto dotcS = alpaka::onHost::allocUnified<C1>(device, 1u);
+            xs.data()[0] = C1{3, -2};
+            ys.data()[0] = C1{-1, 4};
+            alpaka::blas::onHost::dotc(queue, xs, ys, dotcS, options);
+            alpaka::onHost::wait(queue);
+            auto const expected = blas::dotcRef(xs.data(), ys.data(), 1u);
+            CHECK(dotcS.data()[0].real() == Catch::Approx(expected.real()).epsilon(1e-12));
+            CHECK(dotcS.data()[0].imag() == Catch::Approx(expected.imag()).epsilon(1e-12));
+        }
+
+        // Leading offset: alpaka3 1D views are always contiguous (their reported element pitch is the element size),
+        // so BLAS increments exposed through the descriptor are always 1. A view with a nonzero starting offset must
+        // still honor its shifted base pointer; this guards the descriptor base-pointer forwarding used for n = 1 and
+        // for the acceptance example below. Non-unit 1D strides are not expressible through alpaka 1D MdSpan views.
+        if constexpr(std::same_as<ALPAKA_TYPEOF(device.getApi()), alpaka::api::Host>)
+        {
+            using Real = double;
+            constexpr uint32_t off = 2u;
+            constexpr uint32_t subN = 3u;
+            auto hostX = std::vector<Real>(off + subN, Real{-21.0});
+            auto hostY = std::vector<Real>(off + subN, Real{-22.0});
+            for(uint32_t i = 0; i < subN; ++i)
+            {
+                hostX[off + i] = static_cast<Real>(i + 1);
+                hostY[off + i] = static_cast<Real>(2 * (i + 1));
+            }
+            auto xConst = alpaka::makeMdSpan(static_cast<Real const*>(hostX.data() + off), alpaka::Vec<std::size_t, 1u>{subN});
+            auto yConst = alpaka::makeMdSpan(static_cast<Real const*>(hostY.data() + off), alpaka::Vec<std::size_t, 1u>{subN});
+            auto dotcS = alpaka::onHost::allocUnified<Real>(device, 1u);
+            alpaka::blas::onHost::dotc(queue, xConst, yConst, dotcS, options);
+            auto expected = Real{0};
+            for(uint32_t i = 0; i < subN; ++i)
+                expected += hostX[off + i] * hostY[off + i];
+            alpaka::onHost::wait(queue);
+            CHECK(dotcS.data()[0] == Catch::Approx(expected).epsilon(1e-12));
+        }
+
+        // Empty reduction: for n = 0 the queued dotc must write exactly zero into the result buffer.
+        {
+            using C0 = alpaka::math::Complex<float>;
+            auto xe = alpaka::onHost::allocUnified<C0>(device, 0u);
+            auto ye = alpaka::onHost::allocUnified<C0>(device, 0u);
+            auto dotcE = alpaka::onHost::allocUnified<C0>(device, 1u);
+            dotcE.data()[0] = C0{7, -3};
+            alpaka::blas::onHost::dotc(queue, xe, ye, dotcE, options);
+            alpaka::onHost::wait(queue);
+            CHECK(dotcE.data()[0].real() == 0.0f);
+            CHECK(dotcE.data()[0].imag() == 0.0f);
         }
 
         // Acceptance example from the spec: x=[1+2i,3-i], y=[2-i,-1+4i] -> dotc=-7+6i, dot=5+16i.

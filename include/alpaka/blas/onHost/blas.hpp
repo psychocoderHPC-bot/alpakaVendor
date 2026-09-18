@@ -113,6 +113,11 @@ namespace alpaka::blas::onHost
      * ``dotc`` is available on the same backends as ``dot`` (OpenBLAS/cuBLAS/rocBLAS/oneMKL host paths); it is not
      * provided for OpenMP or the generic native alpaka CPU queues.
      *
+     * alpaka 1D vector views are always contiguous (the reported element pitch equals the element size), so the BLAS
+     * increments passed to the backend are always 1; non-unit 1D strides are not expressible through alpaka 1D views.
+     * A view shifted by ``getSubView`` (or an MdSpan created directly from an offset pointer) is honored via its base
+     * pointer.
+     *
      * @param queue alpaka queue that defines when the work runs.
      * @param x first input vector, conjugated before multiplication.
      * @param y second input vector, used as-is.
@@ -126,7 +131,14 @@ namespace alpaka::blas::onHost
         concepts::VectorView auto& result,
         Options options = {})
     {
-        internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(x)>>();
+        using XValue = internal::Value_t<ALPAKA_TYPEOF(x)>;
+        using YValue = internal::Value_t<ALPAKA_TYPEOF(y)>;
+        using ResultValue = internal::Value_t<ALPAKA_TYPEOF(result)>;
+        static_assert(std::same_as<XValue, YValue>, "dotc requires x and y to have the same element type.");
+        static_assert(
+            std::same_as<XValue, ResultValue>,
+            "dotc requires result to have the same element type as x and y.");
+        internal::validateScalarSupport<XValue>();
         internal::validateSameVectorExtent(x, y, "dotc");
         internal::validateScalarResult(x, result, "dotc");
         internal::DotcFn::call(queue, x, y, result, options);
