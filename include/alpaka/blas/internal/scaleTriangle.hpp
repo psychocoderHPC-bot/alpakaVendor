@@ -60,12 +60,22 @@ namespace alpaka::blas::internal
         std::int64_t const n = cd.rows;
         if(n == 0)
             return;
+        // Reject dimensions/leading dimensions that cannot be represented safely: the grid index domain of the
+        // kernel is uint32_t (n*n must fit), and the row pitch must fit the vendor integer width when the same
+        // problem reaches the vendor syrk paths.
+        if(n > std::numeric_limits<std::uint32_t>::max())
+            throw std::invalid_argument("syrk scale: number of rows is too large.");
+        if(n > 65535)
+            throw std::invalid_argument("syrk scale: n*n exceeds the kernel index domain.");
         auto const nU = static_cast<std::uint32_t>(n);
+        // Keep the degenerate branch's metadata contract aligned with the vendor syrk dispatches: host/cuda/hip take
+        // a 32-bit leading dimension, so an oversized C ld must be rejected here too (the vendor path is bypassed).
+        auto const ldChecked = checkedCast<int>(cd.ld, "syrk scale C ld");
         auto const extent = alpaka::Vec<std::uint32_t, 2u>{nU, nU};
         auto const cv = alpaka::makeMdSpan(
             static_cast<T*>(cd.mutPtr),
             extent,
-            alpaka::Vec<std::size_t, 2u>{static_cast<std::size_t>(cd.ld) * sizeof(T), sizeof(T)});
+            alpaka::Vec<std::size_t, 2u>{static_cast<std::size_t>(ldChecked) * sizeof(T), sizeof(T)});
         auto const frameSpec = alpaka::onHost::getFrameSpec(queue.getDevice(), alpaka::exec::anyExecutor, extent);
         queue.enqueue(
             frameSpec,

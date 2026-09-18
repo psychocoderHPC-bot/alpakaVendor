@@ -398,6 +398,53 @@ TEMPLATE_LIST_TEST_CASE(
                     CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}] == Catch::Approx(Scalar{0.0}).epsilon(1e-5f));
         }
 
+        // Lower triangle: alpha=0 scales the selected (lower) triangle by beta; the upper triangle stays unchanged.
+        {
+            auto A = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{n, k});
+            auto C = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{n, n});
+            fillMatrixSentinel(A, n, k, std::nan(""));
+            fillMatrixSentinel(C, n, n, Scalar{7.0});
+            auto lowerC = alpaka::blas::lower(C);
+            alpaka::blas::onHost::syrk(queue, Scalar{0.0}, A, Scalar{2.0}, lowerC, options);
+            alpaka::onHost::wait(queue);
+            for(uint32_t i = 0; i < n; ++i)
+                for(uint32_t j = 0; j <= i; ++j)
+                    CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}] == Catch::Approx(Scalar{14.0}).epsilon(1e-5f));
+            for(uint32_t i = 0; i < n; ++i)
+                for(uint32_t j = i + 1; j < n; ++j)
+                    CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}] == Catch::Approx(Scalar{7.0}).epsilon(1e-5f));
+        }
+
+        // Lower triangle beta=0: lower triangle becomes A*A^T with old C NaN unread; upper unchanged NaN-free.
+        {
+            auto A = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{n, k});
+            auto C = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{n, n});
+            fillMatrix(A, n, k);
+            fillMatrixSentinel(C, n, n, std::nan(""));
+            auto lowerC = alpaka::blas::lower(C);
+            alpaka::blas::onHost::syrk(queue, Scalar{1.0}, A, Scalar{0.0}, lowerC, options);
+            alpaka::onHost::wait(queue);
+            auto const ldA = ldOf(A);
+            auto const Aref = copyRaw(A, n, k, ldA);
+            auto const ldC = ldOf(C);
+            auto Cref = std::vector<Scalar>(n * ldC, Scalar{0.0});
+            blas::syrkRef(
+                Scalar{1.0},
+                Aref.data(),
+                ldA,
+                n,
+                k,
+                alpaka::blas::Transpose::none,
+                Scalar{0.0},
+                Cref.data(),
+                ldC,
+                n,
+                alpaka::blas::Triangle::lower);
+            for(uint32_t i = 0; i < n; ++i)
+                for(uint32_t j = 0; j <= i; ++j)
+                    CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}] == Catch::Approx(Cref[i * ldC + j]).epsilon(1e-4f));
+        }
+
         // beta=0: the selected triangle must equal the reference computed from a zero C; old C NaN is not read.
         {
             auto A = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{n, k});
@@ -658,6 +705,9 @@ TEMPLATE_LIST_TEST_CASE(
     {
         auto queue = device.makeQueue();
         using Scalar = float;
+        auto const options = alpaka::blas::Options{
+            .precision = alpaka::blas::Precision::exact,
+            .algorithm = alpaka::blas::Algorithm::fastest};
 
         // n==0: no data access, no exception, C untouched.
         {
@@ -669,23 +719,68 @@ TEMPLATE_LIST_TEST_CASE(
             SUCCEED("n==0 syrk is a valid no-op.");
         }
 
-        // Queue ordering: two enqueued degenerate syrk calls must be serialized in order.
+        // Queue ordering: a vendor write (alpha!=0) followed by a degenerate scale must be serialized; the scale
+        // reads C produced by the vendor call, so reordering or lost updates would change the result.
         {
             constexpr uint32_t n = 3u;
             constexpr uint32_t k = 2u;
             auto A = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{n, k});
             auto C = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{n, n});
             fillMatrix(A, n, k);
-            fillMatrixSentinel(C, n, n, Scalar{1.0});
+            fillMatrixSentinel(C, n, n, Scalar{0.0});
             auto upperC = alpaka::blas::upper(C);
-            // First: C <- 0*A*A^T + 2*C  => triangle is 2.0.
-            alpaka::blas::onHost::syrk(queue, Scalar{0.0}, A, Scalar{2.0}, upperC);
-            // Second: C <- 0*A*A^T + 3*C  => triangle is 6.0.
-            alpaka::blas::onHost::syrk(queue, Scalar{0.0}, A, Scalar{3.0}, upperC);
+            // First: C <- 1*A*A^T + 0*C  => triangle = A*A^T (a vendor syrk call).
+            alpaka::blas::onHost::syrk(queue, Scalar{1.0}, A, Scalar{0.0}, upperC, options);
+            // Second: C <- 0*A*A^T + 2*C => triangle = 2*(A*A^T). If the calls reorder or drop, the value differs.
+            alpaka::blas::onHost::syrk(queue, Scalar{0.0}, A, Scalar{2.0}, upperC, options);
             alpaka::onHost::wait(queue);
+            auto const ldA = ldOf(A);
+            auto const Aref = copyRaw(A, n, k, ldA);
+            auto const ldC = ldOf(C);
+            auto Cref = std::vector<Scalar>(n * ldC, Scalar{0.0});
+            blas::syrkRef(
+                Scalar{1.0},
+                Aref.data(),
+                ldA,
+                n,
+                k,
+                alpaka::blas::Transpose::none,
+                Scalar{0.0},
+                Cref.data(),
+                ldC,
+                n,
+                alpaka::blas::Triangle::upper);
             for(uint32_t i = 0; i < n; ++i)
                 for(uint32_t j = i; j < n; ++j)
-                    CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}] == Catch::Approx(Scalar{6.0}).epsilon(1e-5f));
+                    CHECK(
+                        C[alpaka::Vec<uint32_t, 2u>{i, j}] == Catch::Approx(2.0f * Cref[i * ldC + j]).epsilon(1e-4f));
+        }
+
+        // Degenerate scale with padded C (ld > cols): the selected triangle scales and the padding is untouched.
+        {
+            constexpr uint32_t n = 3u;
+            constexpr uint32_t k = 2u;
+            auto Astorage = alpaka::onHost::allocUnified<Scalar>(device, 24u);
+            auto A = alpaka::makeMdSpan(
+                Astorage.data(),
+                alpaka::Vec<uint32_t, 2u>{n, k},
+                alpaka::Vec<std::size_t, 2u>{static_cast<std::size_t>(n) * sizeof(Scalar), sizeof(Scalar)});
+            auto Cstorage = alpaka::onHost::allocUnified<Scalar>(device, 3u * 6u);
+            auto C = alpaka::makeMdSpan(
+                Cstorage.data(),
+                alpaka::Vec<uint32_t, 2u>{3u, 3u},
+                alpaka::Vec<std::size_t, 2u>{6u * sizeof(Scalar), sizeof(Scalar)});
+            fillMatrix(A, n, k);
+            fillMatrixSentinel(C, n, 6u, Scalar{5.0});
+            auto lowerC = alpaka::blas::lower(C);
+            alpaka::blas::onHost::syrk(queue, Scalar{0.0}, A, Scalar{2.0}, lowerC, options);
+            alpaka::onHost::wait(queue);
+            for(uint32_t i = 0; i < n; ++i)
+                for(uint32_t j = 0; j <= i; ++j)
+                    CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}] == Catch::Approx(Scalar{10.0}).epsilon(1e-5f));
+            for(uint32_t i = 0; i < n; ++i)
+                for(uint32_t j = i + 1; j < 6u; ++j) // opposite triangle + padding untouched
+                    CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}] == Catch::Approx(Scalar{5.0}).epsilon(1e-5f));
         }
     }
 }
@@ -707,7 +802,8 @@ TEMPLATE_LIST_TEST_CASE(
         using Scalar = float;
         constexpr uint32_t n = 3u;
         constexpr uint32_t k = 3u;
-        // An enormous leading dimension: the pitch overflows the vendor int parameters.
+        // An enormous leading dimension: the pitch overflows the 32-bit vendor int parameters used by the
+        // host/cuda/hip syrk dispatches (and by the degenerate scale-kernel branch).
         constexpr std::size_t hugeLd = static_cast<std::size_t>(std::numeric_limits<uint32_t>::max()) + 2u;
         auto Astorage = alpaka::onHost::allocUnified<Scalar>(device, 16u);
         auto Cstorage = alpaka::onHost::allocUnified<Scalar>(device, 16u);
@@ -719,9 +815,45 @@ TEMPLATE_LIST_TEST_CASE(
             Cstorage.data(),
             alpaka::Vec<uint32_t, 2u>{n, n},
             alpaka::Vec<std::size_t, 2u>{hugeLd * sizeof(Scalar), sizeof(Scalar)});
-        // Deliberately fill neither view: the enormous pitch means any element write would overflow the tiny backing
-        // storage. syrk must reject the oversized leading dimension from metadata alone, before any data access.
-        auto upperC = alpaka::blas::upper(C);
-        CHECK_THROWS_AS(alpaka::blas::onHost::syrk(queue, Scalar{1.0}, A, Scalar{1.0}, upperC), std::invalid_argument);
+        // A normal-C variants with only C's leading dimension oversized exercises the cdLd checkedCast.
+        auto Cst = alpaka::onHost::allocUnified<Scalar>(device, 16u);
+        auto Cbig = alpaka::makeMdSpan(
+            Cst.data(),
+            alpaka::Vec<uint32_t, 2u>{n, n},
+            alpaka::Vec<std::size_t, 2u>{hugeLd * sizeof(Scalar), sizeof(Scalar)});
+        auto Cnormal = alpaka::makeMdSpan(
+            Cst.data(),
+            alpaka::Vec<uint32_t, 2u>{n, n},
+            alpaka::Vec<std::size_t, 2u>{static_cast<std::size_t>(n) * sizeof(Scalar), sizeof(Scalar)});
+        auto Anormal = alpaka::makeMdSpan(
+            Astorage.data(),
+            alpaka::Vec<uint32_t, 2u>{n, k},
+            alpaka::Vec<std::size_t, 2u>{static_cast<std::size_t>(n) * sizeof(Scalar), sizeof(Scalar)});
+        // Deliberately fill none of the oversized views: the enormous pitch means any element write would overflow
+        // the tiny backing storage. The rejection must come from metadata alone, before any data access.
+        if constexpr(!std::same_as<ALPAKA_TYPEOF(device.getApi()), alpaka::api::OneApi>)
+        {
+            auto upperC = alpaka::blas::upper(C);
+            CHECK_THROWS_AS(
+                alpaka::blas::onHost::syrk(queue, Scalar{1.0}, A, Scalar{1.0}, upperC),
+                std::invalid_argument);
+            // C-ld only oversized: the A descriptor is well-formed, C's cdLd must still be rejected.
+            auto upperCbig = alpaka::blas::upper(Cbig);
+            CHECK_THROWS_AS(
+                alpaka::blas::onHost::syrk(queue, Scalar{1.0}, A, Scalar{1.0}, upperCbig),
+                std::invalid_argument);
+            // Degenerate branch (alpha == 0) bypasses the vendor dispatch, so an oversized C ld must be rejected by
+            // the scale path itself. An oversized A ld is harmless there (A is never read) and must be accepted while
+            // C is well-formed -- verified by the succeeding calls below.
+            CHECK_THROWS_AS(
+                alpaka::blas::onHost::syrk(queue, Scalar{0.0}, Anormal, Scalar{1.0}, upperCbig),
+                std::invalid_argument);
+            // Oversized A ld but well-formed C: accepted in the degenerate branch (A untouched), and non-degenerate
+            // run proceeds far enough to reject via the A dispatch checkedCast.
+            auto upperCnormal = alpaka::blas::upper(Cnormal);
+            CHECK_THROWS_AS(
+                alpaka::blas::onHost::syrk(queue, Scalar{1.0}, A, Scalar{1.0}, upperCnormal),
+                std::invalid_argument);
+        }
     }
 }
