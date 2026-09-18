@@ -4,9 +4,9 @@
  */
 
 #include <algorithm>
+#include <alpakaTest/deviceHelper.hpp>
 #include <utility>
 #include <vector>
-#include <alpakaTest/deviceHelper.hpp>
 
 #include "../unit/blas/reference.hpp"
 #include "../unit/test.hpp"
@@ -154,24 +154,37 @@ TEMPLATE_LIST_TEST_CASE("BLAS level1 dotc conjugated dot product", "[integr][bla
         // descriptor scalar type is cv-stripped centrally, so a `MdSpan<const T>` selects the same backend branch as
         // the writable `MdSpan<T>` (regression guard for issue 8's common-element-type / cv-qualified dispatch).
         {
-            using T = float;
-            auto nx = alpaka::onHost::allocUnified<T>(device, n);
-            auto ny = alpaka::onHost::allocUnified<T>(device, n);
-            fillVector(nx.data(), n);
-            fillVector(ny.data(), n);
-            if constexpr(std::same_as<ALPAKA_TYPEOF(device.getApi()), alpaka::api::Host>)
+            auto runReadOnly = [&]<typename T>()
             {
-                auto xConst = alpaka::makeMdSpan(
-                    static_cast<T const*>(nx.data()),
-                    alpaka::Vec<std::size_t, 1u>{n});
-                auto yConst = alpaka::makeMdSpan(
-                    static_cast<T const*>(ny.data()),
-                    alpaka::Vec<std::size_t, 1u>{n});
-                auto dotcRO = alpaka::onHost::allocUnified<T>(device, 1u);
-                alpaka::blas::onHost::dotc(queue, xConst, yConst, dotcRO, options);
-                alpaka::onHost::wait(queue);
-                CHECK(dotcRO.data()[0] == Catch::Approx(blas::dotcRef(nx.data(), ny.data(), n)).epsilon(1e-4));
-            }
+                // MdSpan const-ness is a property of the view type, so a const buffer is sufficient; the data region
+                // is written through the buffer's non-const data() before the const view is created.
+                auto xb = alpaka::onHost::allocUnified<T>(device, n);
+                auto yb = alpaka::onHost::allocUnified<T>(device, n);
+                fillVector(xb.data(), n);
+                fillVector(yb.data(), n);
+                if constexpr(std::same_as<ALPAKA_TYPEOF(device.getApi()), alpaka::api::Host>)
+                {
+                    auto xConst
+                        = alpaka::makeMdSpan(static_cast<T const*>(xb.data()), alpaka::Vec<std::size_t, 1u>{n});
+                    auto yConst
+                        = alpaka::makeMdSpan(static_cast<T const*>(yb.data()), alpaka::Vec<std::size_t, 1u>{n});
+                    auto dotcRO = alpaka::onHost::allocUnified<T>(device, 1u);
+                    alpaka::blas::onHost::dotc(queue, xConst, yConst, dotcRO, options);
+                    alpaka::onHost::wait(queue);
+                    if constexpr(alpaka::blas::ComplexScalar<T>)
+                    {
+                        auto const expected = blas::dotcRef(xb.data(), yb.data(), n);
+                        CHECK(dotcRO.data()[0].real() == Catch::Approx(expected.real()).epsilon(1e-4));
+                        CHECK(dotcRO.data()[0].imag() == Catch::Approx(expected.imag()).epsilon(1e-4));
+                    }
+                    else
+                        CHECK(dotcRO.data()[0] == Catch::Approx(blas::dotcRef(xb.data(), yb.data(), n)).epsilon(1e-4));
+                }
+            };
+            runReadOnly.template operator()<float>();
+            runReadOnly.template operator()<double>();
+            runReadOnly.template operator()<alpaka::math::Complex<float>>();
+            runReadOnly.template operator()<alpaka::math::Complex<double>>();
         }
 
         // Single-element reduction over a complex pair: dotc([a+bi],[c+di]) = conj(a+bi)*(c+di).
@@ -205,8 +218,10 @@ TEMPLATE_LIST_TEST_CASE("BLAS level1 dotc conjugated dot product", "[integr][bla
                 hostX[off + i] = static_cast<Real>(i + 1);
                 hostY[off + i] = static_cast<Real>(2 * (i + 1));
             }
-            auto xConst = alpaka::makeMdSpan(static_cast<Real const*>(hostX.data() + off), alpaka::Vec<std::size_t, 1u>{subN});
-            auto yConst = alpaka::makeMdSpan(static_cast<Real const*>(hostY.data() + off), alpaka::Vec<std::size_t, 1u>{subN});
+            auto xConst
+                = alpaka::makeMdSpan(static_cast<Real const*>(hostX.data() + off), alpaka::Vec<std::size_t, 1u>{subN});
+            auto yConst
+                = alpaka::makeMdSpan(static_cast<Real const*>(hostY.data() + off), alpaka::Vec<std::size_t, 1u>{subN});
             auto dotcS = alpaka::onHost::allocUnified<Real>(device, 1u);
             alpaka::blas::onHost::dotc(queue, xConst, yConst, dotcS, options);
             auto expected = Real{0};

@@ -21,6 +21,7 @@ namespace alpaka::blas::onHost
     void copy(auto& queue, concepts::VectorView auto const& x, concepts::VectorView auto& y, Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(x)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(y)>();
         internal::validateSameVectorExtent(x, y, "copy");
         internal::CopyFn::call(queue, x, y, options);
     }
@@ -36,6 +37,8 @@ namespace alpaka::blas::onHost
     void swap(auto& queue, concepts::VectorView auto& x, concepts::VectorView auto& y, Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(x)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(x)>();
+        internal::validateWritable<ALPAKA_TYPEOF(y)>();
         internal::validateSameVectorExtent(x, y, "swap");
         internal::SwapFn::call(queue, x, y, options);
     }
@@ -53,6 +56,7 @@ namespace alpaka::blas::onHost
     void scal(auto& queue, auto alpha, concepts::VectorView auto& x, Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(x)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(x)>();
         internal::ScalFn::call(queue, alpha, x, options);
     }
 
@@ -75,6 +79,7 @@ namespace alpaka::blas::onHost
         Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(x)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(y)>();
         internal::validateSameVectorExtent(x, y, "axpy");
         internal::AxpyFn::call(queue, alpha, x, y, options);
     }
@@ -98,6 +103,7 @@ namespace alpaka::blas::onHost
         Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(x)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(result)>();
         internal::validateSameVectorExtent(x, y, "dot");
         internal::validateScalarResult(x, result, "dot");
         internal::DotFn::call(queue, x, y, result, options);
@@ -139,6 +145,7 @@ namespace alpaka::blas::onHost
             std::same_as<XValue, ResultValue>,
             "dotc requires result to have the same element type as x and y.");
         internal::validateScalarSupport<XValue>();
+        internal::validateWritable<ALPAKA_TYPEOF(result)>();
         internal::validateSameVectorExtent(x, y, "dotc");
         internal::validateScalarResult(x, result, "dotc");
         internal::DotcFn::call(queue, x, y, result, options);
@@ -157,6 +164,7 @@ namespace alpaka::blas::onHost
     void nrm2(auto& queue, concepts::VectorView auto const& x, concepts::VectorView auto& result, Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(x)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(result)>();
         internal::validateScalarResult(x, result, "nrm2");
         internal::Nrm2Fn::call(queue, x, result, options);
     }
@@ -175,6 +183,7 @@ namespace alpaka::blas::onHost
     void asum(auto& queue, concepts::VectorView auto const& x, concepts::VectorView auto& result, Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(x)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(result)>();
         internal::validateScalarResult(x, result, "asum");
         internal::AsumFn::call(queue, x, result, options);
     }
@@ -196,6 +205,7 @@ namespace alpaka::blas::onHost
         Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(x)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(result)>();
         internal::validateScalarResult(x, result, "iamax");
         internal::IamaxFn::call(queue, x, result, options);
     }
@@ -231,6 +241,7 @@ namespace alpaka::blas::onHost
         Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(A)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(y)>();
         internal::validateGemv(A, x, y);
         internal::GemvFn::call(queue, alpha, A, x, beta, y, options);
     }
@@ -259,6 +270,7 @@ namespace alpaka::blas::onHost
         Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(A)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(C)>();
         internal::validateGemm(A, B, C);
         internal::GemmFn::call(queue, alpha, A, B, beta, C, options);
     }
@@ -290,6 +302,7 @@ namespace alpaka::blas::onHost
         Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(A)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(C)>();
         auto const ad = internal::makeBatchedMatrixDescriptor(A);
         auto const bd = internal::makeBatchedMatrixDescriptor(B);
         auto const cd = internal::makeBatchedMatrixDescriptor(C);
@@ -332,6 +345,7 @@ namespace alpaka::blas::onHost
         Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(A)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(B)>();
         internal::validateTrsm(side, A, B);
         internal::TrsmFn::call(queue, side, alpha, A, B, options);
     }
