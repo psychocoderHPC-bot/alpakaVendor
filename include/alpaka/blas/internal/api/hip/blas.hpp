@@ -968,7 +968,6 @@ namespace alpaka::blas::internal
             {
                 RocblasHandle rocblas{nativeStream};
                 auto handle = rocblas.handle;
-                setPointerMode<T>(handle);
                 setAtomicsMode(handle, options);
                 using Real = Real_t<T>;
                 Real alphaT = static_cast<Real>(alpha);
