@@ -88,7 +88,8 @@ In this example:
 Step 6: Hermitian rank-k update
 --------------------------------
 
-``herk`` is the complex counterpart of ``syrk``: it computes the selected triangle of
+``herk`` is the complex Hermitian rank-k update (the real symmetric counterpart is the standard BLAS ``syrk``,
+not yet provided here): it computes the selected triangle of
 ``C = alpha * op(A) * conjTranspose(op(A)) + beta * C``. The scalar coefficients must be real, ``A`` may be passed
 as-is or as ``conjTransposed(A)`` (plain ``transposed(A)`` is not a standard HERK operation), and ``C`` must be
 annotated ``upper(C)`` or ``lower(C)``. The result is Hermitian with a real diagonal, so on an actual update the

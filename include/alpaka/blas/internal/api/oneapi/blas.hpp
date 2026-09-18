@@ -111,9 +111,10 @@ namespace alpaka::blas::internal
 
         if(options.algorithm == Algorithm::fastest)
         {
-            // oneMKL alternate compute modes are currently exposed only for single-precision real and complex GEMM
-            // paths (and the rank-k HERK/SYRK paths that share this helper); double-precision requests
-            // intentionally fall back to the routine default.
+            // oneMKL alternate compute modes (prefer_alternate) are documented only for single-precision real and
+            // complex GEMM. Non-GEMM routines (e.g. the rank-k HERK path) must NOT request them, so this helper
+            // returns the GEMM-only alternate mode solely for the GEMM dispatch; HERK uses the standard/default
+            // compute mode instead. Double-precision requests intentionally fall back to the routine default.
             if constexpr(
                 std::same_as<std::remove_cv_t<T>, float>
                 || std::same_as<std::remove_cv_t<T>, alpaka::math::Complex<float>>)
@@ -582,13 +583,13 @@ namespace alpaka::blas::internal
         auto const k = ad.transpose == Transpose::none ? ad.cols : ad.rows;
         auto const alphaT = toOneMklScalar<T>(alpha);
         auto const betaT = toOneMklScalar<T>(beta);
-        auto const computeMode = oneMklComputeModeFor<T>(options);
+        // oneMKL alternate compute modes are GEMM-only; HERK uses the standard/default compute mode.
         queue.enqueueNativeFn(
             [=](sycl::queue q) -> sycl::event
             {
                 auto deps = std::vector<sycl::event>{q.ext_oneapi_submit_barrier()};
                 // oneMKL is row-major native, so the public triangle/operation are forwarded unchanged.
-                if(computeMode.has_value())
+                if(options.precision == Precision::exact || options.algorithm == Algorithm::deterministic)
                     return oneapi::mkl::blas::row_major::herk(
                         q,
                         toOneMklUplo(cd.triangle),
@@ -601,7 +602,7 @@ namespace alpaka::blas::internal
                         betaT,
                         oneMklPtr<T>(cd.mutPtr),
                         cd.ld,
-                        *computeMode,
+                        oneapi::mkl::blas::compute_mode::standard,
                         deps);
 
                 return oneapi::mkl::blas::row_major::herk(

@@ -319,7 +319,7 @@ namespace alpaka::blas::onHost
      *
      * ``A`` and ``C`` must not overlap.
      *
-     * The real-valued counterpart is ``syrk``.
+     * The real-valued counterpart is the standard BLAS ``syrk`` (real symmetric rank-k), not yet provided here.
      *
      * @param queue alpaka queue that defines when the work runs.
      * @param alpha real scalar multiplier for the rank-k product.
