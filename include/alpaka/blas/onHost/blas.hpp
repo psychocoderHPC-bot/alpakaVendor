@@ -304,9 +304,13 @@ namespace alpaka::blas::onHost
      * Only real scalar types (``float``, ``double``) are supported. Complex symmetric rank-k is intentionally not
      * exposed here; the complex Hermitian counterpart is ``herk``.
      *
-     * ``A`` is a general dense matrix and may be annotated ``transposed(A)`` (or ``conjTransposed(A)``, normalized to
-     * transpose for real types). ``C`` must carry an explicit ``upper(C)`` or ``lower(C)`` selection; the opposite
-     * triangle and any padding are left unchanged. Transpose and unit-diagonal annotations on ``C`` are rejected.
+     * ``A`` is a general dense matrix and may be annotated ``transposed(A)``. ``conjTransposed(A)`` is rejected;
+     * use ``transposed(A)`` for real operands. ``C`` must carry an explicit ``upper(C)`` or ``lower(C)`` selection;
+     * the opposite triangle and any padding are left unchanged. Transpose and unit-diagonal annotations on ``C`` are
+     * rejected.
+     *
+     * The vendor BLAS call still reads the operands even when ``alpha == 0`` or ``beta == 0``; no special
+     * zero-scalar fast path is guaranteed.
      *
      * @param queue alpaka queue that defines when the work runs.
      * @param alpha real scalar multiplier for the rank-k product.

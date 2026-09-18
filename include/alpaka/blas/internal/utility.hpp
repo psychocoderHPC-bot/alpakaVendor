@@ -285,6 +285,8 @@ namespace alpaka::blas::internal
         // A is a general dense matrix: reject triangle/unit-diagonal annotations.
         if(ad.triangle != Triangle::full)
             throw std::invalid_argument("syrk requires a general dense A without a triangle annotation.");
+        if(ad.transpose == Transpose::conjugateTransposed)
+            throw std::invalid_argument("syrk is real-only; use transposed(A) instead of conjTransposed(A).");
         if(ad.diagonal != Diagonal::nonUnit)
             throw std::invalid_argument("syrk requires a general dense A without a unit-diagonal annotation.");
         // C must carry an explicit upper/lower selection.
