@@ -123,6 +123,31 @@ TEMPLATE_LIST_TEST_CASE("BLAS level1 dotc conjugated dot product", "[integr][bla
         // For this fillVector pattern (x[i]=(i+1)+(2i+1)i, y[i]=(i+1)+(2i+1)i), dotc != dot.
         CHECK(dotcResult.data()[0] != dotResult.data()[0]);
 
+        // Real-valued dotc delegates to the real dot path (cblas_sdot / cblas_ddot and the equivalent vendor
+        // Sdot/Ddot routines), so it must match dot exactly.
+        {
+            using Real = float;
+            auto xr = alpaka::onHost::allocUnified<Real>(device, n);
+            auto yr = alpaka::onHost::allocUnified<Real>(device, n);
+            auto dotcReal = alpaka::onHost::allocUnified<Real>(device, 1u);
+            fillVector(xr.data(), n);
+            fillVector(yr.data(), n);
+            alpaka::blas::onHost::dotc(queue, xr, yr, dotcReal, options);
+            alpaka::onHost::wait(queue);
+            CHECK(dotcReal.data()[0] == Catch::Approx(blas::dotRef(xr.data(), yr.data(), n)).epsilon(1e-4));
+        }
+        {
+            using Real = double;
+            auto xr = alpaka::onHost::allocUnified<Real>(device, n);
+            auto yr = alpaka::onHost::allocUnified<Real>(device, n);
+            auto dotcReal = alpaka::onHost::allocUnified<Real>(device, 1u);
+            fillVector(xr.data(), n);
+            fillVector(yr.data(), n);
+            alpaka::blas::onHost::dotc(queue, xr, yr, dotcReal, options);
+            alpaka::onHost::wait(queue);
+            CHECK(dotcReal.data()[0] == Catch::Approx(blas::dotRef(xr.data(), yr.data(), n)).epsilon(1e-4));
+        }
+
         // Acceptance example from the spec: x=[1+2i,3-i], y=[2-i,-1+4i] -> dotc=-7+6i, dot=5+16i.
         using C = alpaka::math::Complex<double>;
         constexpr uint32_t m = 2u;
