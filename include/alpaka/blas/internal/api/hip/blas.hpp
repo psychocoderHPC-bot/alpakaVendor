@@ -954,7 +954,7 @@ namespace alpaka::blas::internal
         auto const& A,
         auto beta,
         auto& C,
-        [[maybe_unused]] Options options)
+        Options options)
     {
         using T = Value_t<ALPAKA_TYPEOF(A)>;
         static_assert(RealScalar<T>, "syrk supports only real scalar types.");
@@ -968,6 +968,7 @@ namespace alpaka::blas::internal
                 RocblasHandle rocblas{nativeStream};
                 auto handle = rocblas.handle;
                 setPointerMode<T>(handle);
+                setAtomicsMode(handle, options);
                 T alphaT = static_cast<T>(alpha);
                 T betaT = static_cast<T>(beta);
                 // Row-major C = alpha*M*M^T + beta*C is, seen column-major, D = C^T.

@@ -112,7 +112,9 @@ namespace alpaka::blas::internal
         if(options.algorithm == Algorithm::fastest)
         {
             // oneMKL alternate compute modes are currently exposed only for single-precision real and complex GEMM
-            // paths; double-precision requests intentionally fall back to the routine default.
+            // paths; double-precision requests intentionally fall back to the routine default. Compute-mode requests
+            // on other routines (for example syrk) are subject to the same GEMM-only caveat and may be ignored by
+            // oneMKL.
             if constexpr(
                 std::same_as<std::remove_cv_t<T>, float>
                 || std::same_as<std::remove_cv_t<T>, alpaka::math::Complex<float>>)

@@ -905,6 +905,7 @@ namespace alpaka::blas::internal
                 CublasHandle cublas{nativeStream};
                 auto handle = cublas.handle;
                 setMathMode<T>(handle, options);
+                setAtomicsMode(handle, options);
                 T alphaT = static_cast<T>(alpha);
                 T betaT = static_cast<T>(beta);
                 // Row-major C = alpha*M*M^T + beta*C with C row-major n x n is, seen column-major,
