@@ -572,7 +572,7 @@ namespace alpaka::blas::internal
         auto const& A,
         auto beta,
         auto& C,
-        Options options)
+        [[maybe_unused]] Options options)
     {
         using T = Value_t<ALPAKA_TYPEOF(A)>;
         static_assert(ComplexScalar<T>, "herk supports only complex scalar types.");
@@ -583,28 +583,13 @@ namespace alpaka::blas::internal
         auto const k = ad.transpose == Transpose::none ? ad.cols : ad.rows;
         auto const alphaT = toOneMklScalar<T>(alpha);
         auto const betaT = toOneMklScalar<T>(beta);
-        // oneMKL alternate compute modes are GEMM-only; HERK uses the standard/default compute mode.
+        // oneMKL alternate compute modes are GEMM-only; HERK uses the standard/default compute mode, which is the
+        // routine default, so no compute-mode argument is passed.
         queue.enqueueNativeFn(
             [=](sycl::queue q) -> sycl::event
             {
                 auto deps = std::vector<sycl::event>{q.ext_oneapi_submit_barrier()};
                 // oneMKL is row-major native, so the public triangle/operation are forwarded unchanged.
-                if(options.precision == Precision::exact || options.algorithm == Algorithm::deterministic)
-                    return oneapi::mkl::blas::row_major::herk(
-                        q,
-                        toOneMklUplo(cd.triangle),
-                        toOneMklTranspose(ad.transpose),
-                        n,
-                        k,
-                        alphaT,
-                        oneMklPtr<T>(ad.constPtr),
-                        ad.ld,
-                        betaT,
-                        oneMklPtr<T>(cd.mutPtr),
-                        cd.ld,
-                        oneapi::mkl::blas::compute_mode::standard,
-                        deps);
-
                 return oneapi::mkl::blas::row_major::herk(
                     q,
                     toOneMklUplo(cd.triangle),
