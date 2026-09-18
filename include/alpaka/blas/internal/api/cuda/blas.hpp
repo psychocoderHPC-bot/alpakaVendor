@@ -883,5 +883,71 @@ namespace alpaka::blas::internal
                         "cublasZtrsm");
             });
     }
+
+    void alpakaFnDispatch(
+        SyrkFn::Spec<alpaka::api::Cuda, alpaka::deviceKind::NvidiaGpu>,
+        auto&& queue,
+        auto alpha,
+        auto const& A,
+        auto beta,
+        auto& C,
+        Options options)
+    {
+        using T = Value_t<ALPAKA_TYPEOF(A)>;
+        static_assert(RealScalar<T>, "syrk supports only real scalar types.");
+        auto const ad = makeMatrixDescriptor(A);
+        auto const cd = makeMatrixDescriptor(C);
+        auto const n = ad.transpose == Transpose::none ? ad.rows : ad.cols;
+        auto const k = ad.transpose == Transpose::none ? ad.cols : ad.rows;
+        auto const nInt = checkedCast<int>(n, "syrk n");
+        auto const kInt = checkedCast<int>(k, "syrk k");
+        auto const adLd = checkedCast<int>(ad.ld, "syrk A ld");
+        auto const cdLd = checkedCast<int>(cd.ld, "syrk C ld");
+        queue.enqueueNativeFn(
+            [=](cudaStream_t nativeStream)
+            {
+                CublasHandle cublas{nativeStream};
+                auto handle = cublas.handle;
+                setMathMode<T>(handle, options);
+                setAtomicsMode(handle, options);
+                T alphaT = static_cast<T>(alpha);
+                T betaT = static_cast<T>(beta);
+                // Row-major C = alpha*M*M^T + beta*C with C row-major n x n is, seen column-major,
+                // D = C^T = alpha*M^T*M + beta*D. cuBLAS syrk computes D = op(B)*op(B)^T, so we need
+                // op(B) = M^T. M = op_public(A), so M^T = op_flipped(A) where flipped(none)=T, flipped(T)=N.
+                auto const colOp = ad.transpose == Transpose::none ? CUBLAS_OP_T : CUBLAS_OP_N;
+                auto const colTriangle = swappedTriangle(cd.triangle);
+                if constexpr(std::same_as<T, float>)
+                    check(
+                        cublasSsyrk(
+                            handle,
+                            toCublasFill(colTriangle),
+                            colOp,
+                            nInt,
+                            kInt,
+                            &alphaT,
+                            static_cast<float const*>(ad.constPtr),
+                            adLd,
+                            &betaT,
+                            static_cast<float*>(cd.mutPtr),
+                            cdLd),
+                        "cublasSsyrk");
+                else
+                    check(
+                        cublasDsyrk(
+                            handle,
+                            toCublasFill(colTriangle),
+                            colOp,
+                            nInt,
+                            kInt,
+                            &alphaT,
+                            static_cast<double const*>(ad.constPtr),
+                            adLd,
+                            &betaT,
+                            static_cast<double*>(cd.mutPtr),
+                            cdLd),
+                        "cublasDsyrk");
+            });
+    }
 } // namespace alpaka::blas::internal
 #endif

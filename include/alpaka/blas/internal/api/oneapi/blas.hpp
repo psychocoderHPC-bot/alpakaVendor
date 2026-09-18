@@ -111,8 +111,11 @@ namespace alpaka::blas::internal
 
         if(options.algorithm == Algorithm::fastest)
         {
-            // oneMKL alternate compute modes are currently exposed only for single-precision real and complex GEMM
-            // paths; double-precision requests intentionally fall back to the routine default.
+            // oneMKL exposes alternate compute modes for more than single-precision real and complex GEMM: they are
+            // available for SYRK (and other routines) as well. Both the compute mode and the underlying library
+            // support are routine- and device-dependent, so a request for an alternate mode is best-effort: if a
+            // routine or device does not support it, oneMKL falls back to the routine default. Double-precision
+            // requests intentionally stay with the routine default here.
             if constexpr(
                 std::same_as<std::remove_cv_t<T>, float>
                 || std::same_as<std::remove_cv_t<T>, alpaka::math::Complex<float>>)
@@ -558,6 +561,64 @@ namespace alpaka::blas::internal
                     ad.ld,
                     oneMklPtr<T>(bd.mutPtr),
                     bd.ld,
+                    deps);
+            });
+    }
+
+    template<alpaka::concepts::DeviceKind T_DeviceKind>
+    void alpakaFnDispatch(
+        SyrkFn::Spec<alpaka::api::OneApi, T_DeviceKind>,
+        auto&& queue,
+        auto alpha,
+        auto const& A,
+        auto beta,
+        auto& C,
+        Options options)
+    {
+        using T = Value_t<ALPAKA_TYPEOF(A)>;
+        static_assert(RealScalar<T>, "syrk supports only real scalar types.");
+        auto const ad = makeMatrixDescriptor(A);
+        auto const cd = makeMatrixDescriptor(C);
+        auto const n = ad.transpose == Transpose::none ? ad.rows : ad.cols;
+        auto const k = ad.transpose == Transpose::none ? ad.cols : ad.rows;
+        // For real operands conjugateTransposed is the identity-conjugated transpose: normalize to transposed.
+        auto const op
+            = ad.transpose == Transpose::none ? oneapi::mkl::transpose::nontrans : oneapi::mkl::transpose::trans;
+        auto alphaT = toOneMklScalar<T>(alpha);
+        auto betaT = toOneMklScalar<T>(beta);
+        auto const computeMode = oneMklComputeModeFor<T>(options);
+        queue.enqueueNativeFn(
+            [=](sycl::queue q) -> sycl::event
+            {
+                auto deps = std::vector<sycl::event>{q.ext_oneapi_submit_barrier()};
+                if(computeMode.has_value())
+                    return oneapi::mkl::blas::row_major::syrk(
+                        q,
+                        toOneMklUplo(cd.triangle),
+                        op,
+                        n,
+                        k,
+                        alphaT,
+                        oneMklPtr<T>(ad.constPtr),
+                        ad.ld,
+                        betaT,
+                        oneMklPtr<T>(cd.mutPtr),
+                        cd.ld,
+                        *computeMode,
+                        deps);
+
+                return oneapi::mkl::blas::row_major::syrk(
+                    q,
+                    toOneMklUplo(cd.triangle),
+                    op,
+                    n,
+                    k,
+                    alphaT,
+                    oneMklPtr<T>(ad.constPtr),
+                    ad.ld,
+                    betaT,
+                    oneMklPtr<T>(cd.mutPtr),
+                    cd.ld,
                     deps);
             });
     }

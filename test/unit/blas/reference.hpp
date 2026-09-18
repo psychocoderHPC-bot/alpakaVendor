@@ -114,6 +114,48 @@ namespace alpakaVendor::test::blas
         return sum;
     }
 
+    // Real symmetric rank-k update: writes the selected triangle of
+    // C = alpha * M * M^T + beta * C where M = op(A) is n x k.
+    // The opposite triangle and padding are left unchanged.
+    template<typename T>
+    inline void syrkRef(
+        T alpha,
+        T const* a,
+        std::size_t lda,
+        std::size_t aRows,
+        std::size_t aCols,
+        alpaka::blas::Transpose trans,
+        T beta,
+        T* c,
+        std::size_t ldc,
+        std::size_t n,
+        alpaka::blas::Triangle triangle)
+    {
+        auto const k = trans == alpaka::blas::Transpose::none ? aCols : aRows;
+        for(std::size_t i = 0; i < n; ++i)
+        {
+            auto const inTri = [triangle](std::size_t r, std::size_t col)
+            { return triangle == alpaka::blas::Triangle::upper ? col >= r : col <= r; };
+            for(std::size_t j = 0; j < n; ++j)
+            {
+                if(!inTri(i, j))
+                    continue;
+                // Degenerate semantics mirroring the syrk wrapper: with alpha == 0 (or k == 0) the old C is only
+                // scaled by beta and A is never read; with beta == 0 the old C is never read.
+                T value{};
+                if(alpha != T{0} && k != 0)
+                {
+                    for(std::size_t kk = 0; kk < k; ++kk)
+                        value += applyTranspose(a, lda, i, kk, trans) * applyTranspose(a, lda, j, kk, trans);
+                    value = alpha * value;
+                }
+                if(beta != T{0})
+                    value += beta * c[i * ldc + j];
+                c[i * ldc + j] = value;
+            }
+        }
+    }
+
     template<typename T>
     inline auto nrm2Ref(T const* x, std::size_t n)
     {

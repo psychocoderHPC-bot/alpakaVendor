@@ -6,6 +6,7 @@
 #pragma once
 
 #include "alpaka/blas/internal/api/blas.hpp"
+#include "alpaka/blas/internal/scaleTriangle.hpp"
 
 namespace alpaka::blas::onHost
 {
@@ -21,6 +22,7 @@ namespace alpaka::blas::onHost
     void copy(auto& queue, concepts::VectorView auto const& x, concepts::VectorView auto& y, Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(x)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(y)>();
         internal::validateSameVectorExtent(x, y, "copy");
         internal::CopyFn::call(queue, x, y, options);
     }
@@ -36,6 +38,8 @@ namespace alpaka::blas::onHost
     void swap(auto& queue, concepts::VectorView auto& x, concepts::VectorView auto& y, Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(x)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(x)>();
+        internal::validateWritable<ALPAKA_TYPEOF(y)>();
         internal::validateSameVectorExtent(x, y, "swap");
         internal::SwapFn::call(queue, x, y, options);
     }
@@ -53,6 +57,7 @@ namespace alpaka::blas::onHost
     void scal(auto& queue, auto alpha, concepts::VectorView auto& x, Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(x)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(x)>();
         internal::ScalFn::call(queue, alpha, x, options);
     }
 
@@ -75,6 +80,7 @@ namespace alpaka::blas::onHost
         Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(x)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(y)>();
         internal::validateSameVectorExtent(x, y, "axpy");
         internal::AxpyFn::call(queue, alpha, x, y, options);
     }
@@ -98,6 +104,7 @@ namespace alpaka::blas::onHost
         Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(x)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(result)>();
         internal::validateSameVectorExtent(x, y, "dot");
         internal::validateScalarResult(x, result, "dot");
         internal::DotFn::call(queue, x, y, result, options);
@@ -116,6 +123,7 @@ namespace alpaka::blas::onHost
     void nrm2(auto& queue, concepts::VectorView auto const& x, concepts::VectorView auto& result, Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(x)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(result)>();
         internal::validateScalarResult(x, result, "nrm2");
         internal::Nrm2Fn::call(queue, x, result, options);
     }
@@ -134,6 +142,7 @@ namespace alpaka::blas::onHost
     void asum(auto& queue, concepts::VectorView auto const& x, concepts::VectorView auto& result, Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(x)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(result)>();
         internal::validateScalarResult(x, result, "asum");
         internal::AsumFn::call(queue, x, result, options);
     }
@@ -155,6 +164,7 @@ namespace alpaka::blas::onHost
         Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(x)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(result)>();
         internal::validateScalarResult(x, result, "iamax");
         internal::IamaxFn::call(queue, x, result, options);
     }
@@ -190,6 +200,7 @@ namespace alpaka::blas::onHost
         Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(A)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(y)>();
         internal::validateGemv(A, x, y);
         internal::GemvFn::call(queue, alpha, A, x, beta, y, options);
     }
@@ -218,6 +229,7 @@ namespace alpaka::blas::onHost
         Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(A)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(C)>();
         internal::validateGemm(A, B, C);
         internal::GemmFn::call(queue, alpha, A, B, beta, C, options);
     }
@@ -249,6 +261,7 @@ namespace alpaka::blas::onHost
         Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(A)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(C)>();
         auto const ad = internal::makeBatchedMatrixDescriptor(A);
         auto const bd = internal::makeBatchedMatrixDescriptor(B);
         auto const cd = internal::makeBatchedMatrixDescriptor(C);
@@ -291,7 +304,64 @@ namespace alpaka::blas::onHost
         Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(A)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(B)>();
         internal::validateTrsm(side, A, B);
         internal::TrsmFn::call(queue, side, alpha, A, B, options);
+    }
+
+    /**
+     * Symmetric rank-k update.
+     *
+     * Computes the selected triangle of ``C = alpha * op(A) * transpose(op(A)) + beta * C`` where ``M = op(A)`` has
+     * shape ``n x k`` and ``C`` is ``n x n``.
+     *
+     * Only real scalar types (``float``, ``double``) are supported. Complex symmetric rank-k is intentionally not
+     * exposed here; the complex Hermitian counterpart is ``herk``.
+     *
+     * ``A`` is a general dense matrix and may be annotated ``transposed(A)`` or ``conjTransposed(A)``. For real
+     * operands ``conjTransposed(A)`` is equivalent to ``transposed(A)`` (conjugation is the identity on real types)
+     * and is normalized to the transposed operation. ``C`` must carry an explicit ``upper(C)`` or ``lower(C)``
+     * selection; the opposite triangle and any padding are left unchanged. Transpose and unit-diagonal annotations on
+     * ``C`` are rejected.
+     *
+     * Degenerate cases are handled without touching the operands that must not be read:
+     * - ``n == 0`` is a no-op and no data is accessed at all.
+     * - ``k == 0`` or ``alpha == 0`` produce ``beta * C`` on the selected triangle; ``A`` is never read.
+     * - ``beta == 0`` writes ``alpha * op(A) * transpose(op(A))`` to the selected triangle; the old content of the
+     *   triangle is not read.
+     *
+     * ``A`` and ``C`` must not alias (no overlapping storage).
+     *
+     * @param queue alpaka queue that defines when the work runs.
+     * @param alpha real scalar multiplier for the rank-k product.
+     * @param A input matrix, optionally ``transposed(A)`` or ``conjTransposed(A)``.
+     * @param beta real scalar multiplier applied to the selected triangle of the existing ``C``.
+     * @param C input/output result matrix, annotated ``upper(C)`` or ``lower(C)``.
+     * @param options optional backend hints.
+     */
+    void syrk(
+        auto& queue,
+        auto alpha,
+        concepts::MatrixView auto const& A,
+        auto beta,
+        concepts::MatrixView auto& C,
+        Options options = {})
+    {
+        using T = internal::Value_t<ALPAKA_TYPEOF(A)>;
+        static_assert(RealScalar<T>, "syrk supports only real scalar types.");
+        internal::validateWritable<ALPAKA_TYPEOF(C)>();
+        internal::validateSyrk(A, C);
+        auto const ad = internal::makeMatrixDescriptor(A);
+        auto const n = internal::getTranspose(A) == Transpose::none ? ad.rows : ad.cols;
+        auto const k = internal::getTranspose(A) == Transpose::none ? ad.cols : ad.rows;
+        if(n == 0)
+            return; // nothing to do, no data access.
+        if(k == 0 || static_cast<T>(alpha) == T{0})
+        {
+            // The result is beta * C on the selected triangle and A must not be read.
+            internal::enqueueScaleTriangle(queue, C, beta);
+            return;
+        }
+        internal::SyrkFn::call(queue, alpha, A, beta, C, options);
     }
 } // namespace alpaka::blas::onHost
