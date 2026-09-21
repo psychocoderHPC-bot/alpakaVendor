@@ -581,8 +581,14 @@ namespace alpaka::blas::internal
         // Logical (post-op) extents: op(A) is n x k.
         auto const n = ad.transpose == Transpose::none ? ad.rows : ad.cols;
         auto const k = ad.transpose == Transpose::none ? ad.cols : ad.rows;
-        auto const alphaT = toOneMklScalar<T>(alpha);
-        auto const betaT = toOneMklScalar<T>(beta);
+        // oneMKL validates leading dimensions and rejects degenerate empty updates, but the public
+        // contract (matching OpenBLAS CHERK and the integration tests) is a no-op for n=0 or k=0:
+        // nothing is read from or written to C.
+        if(n == 0 || k == 0)
+            return;
+        // oneMKL herk expects real scalars (value_or_pointer<Treal>), so use REAL coefficients, not the complex type.
+        auto const alphaT = static_cast<Real_t<T>>(alpha);
+        auto const betaT = static_cast<Real_t<T>>(beta);
         // oneMKL alternate compute modes are GEMM-only; HERK uses the standard/default compute mode, which is the
         // routine default, so no compute-mode argument is passed.
         queue.enqueueNativeFn(

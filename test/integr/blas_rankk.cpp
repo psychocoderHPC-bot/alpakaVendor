@@ -445,14 +445,17 @@ TEMPLATE_LIST_TEST_CASE(
 
         using Scalar = alpaka::math::Complex<float>;
         using Real = RealOf<Scalar>;
-        // n=0: return without touching C.
+        // n=0: assert C's storage is untouched (no-op contract). Use a backing buffer large enough to hold the
+        // would-be result so any spurious write is observable, then build 0-row views over it.
         {
             auto A = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{0u, 2u});
-            auto C = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{0u, 0u});
-            auto upperC = alpaka::blas::upper(C);
+            auto C = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{1u, 1u});
+            C[alpaka::Vec<uint32_t, 2u>{0u, 0u}] = Scalar{7.0f, -3.0f};
+            auto const before = C[alpaka::Vec<uint32_t, 2u>{0u, 0u}];
+            auto const upperC = alpaka::blas::upper(C.getSubSharedBuffer(alpaka::Vec<uint32_t, 2u>{0u, 0u}));
             alpaka::blas::onHost::herk(queue, Real{1.0f}, A, Real{1.0f}, upperC, options);
             alpaka::onHost::wait(queue);
-            SUCCEED();
+            CHECK(C[alpaka::Vec<uint32_t, 2u>{0u, 0u}] == before);
         }
         // k=0: the BLAS spec leaves k=0 behavior undefined (a no-op or C=beta*C are both legal). OpenBLAS CHERK
         // rejects a zero leading dimension (k=0 => lda=0) and returns without modifying C, so on the host
@@ -468,9 +471,10 @@ TEMPLATE_LIST_TEST_CASE(
             auto upperC = alpaka::blas::upper(C);
             alpaka::blas::onHost::herk(queue, Real{1.0f}, A, Real{2.0f}, upperC, options);
             alpaka::onHost::wait(queue);
-            // The CPU test backends in this suite are all OpenBLAS-backed, so the no-modification behavior holds.
-            // (On a GPU backend that does scale on k=0, this assertion would need to be relaxed; the suite only
-            // enables the OpenBLAS host BLAS backend.)
+            // The CPU CI backends in this suite are OpenBLAS-host and oneMKL-CPU, and both dispatch paths are
+            // expected to no-op on k=0: OpenBLAS CHERK returns without modifying C, and the oneapi path has an
+            // explicit degenerate-dims guard. Only assert this vendor-specific host behavior rather than the
+            // general BLAS contract.
             for(uint32_t i = 0; i < n; ++i)
                 for(uint32_t j = i; j < n; ++j)
                     CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}] == before[i * ldC + j]);
