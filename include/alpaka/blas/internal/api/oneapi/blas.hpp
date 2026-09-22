@@ -593,10 +593,9 @@ namespace alpaka::blas::internal
         // any other request leaves the oneMKL routine default (compute_mode::unset). The mode is always passed
         // explicitly so options are never silently discarded; the mapping mirrors the GEMM/trsm dispatches' helper
         // for the supported modes while never requesting the GEMM-only alternate mode.
-        auto const computeMode
-            = options.precision == Precision::exact || options.algorithm == Algorithm::deterministic
-            ? oneapi::mkl::blas::compute_mode::standard
-            : oneapi::mkl::blas::compute_mode::unset;
+        auto const computeMode = options.precision == Precision::exact || options.algorithm == Algorithm::deterministic
+                                     ? oneapi::mkl::blas::compute_mode::standard
+                                     : oneapi::mkl::blas::compute_mode::unset;
         queue.enqueueNativeFn(
             [=](sycl::queue q) -> sycl::event
             {

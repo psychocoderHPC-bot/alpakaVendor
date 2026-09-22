@@ -16,12 +16,11 @@
  * compile-fail validation step). It is not part of the normal build.
  */
 
-#include "alpaka/blas.hpp"
+#include <catch2/catch_test_macros.hpp>
 
+#include "alpaka/blas.hpp"
 #include "alpakaTest/deviceHelper.hpp"
 #include "test.hpp"
-
-#include <catch2/catch_test_macros.hpp>
 
 using namespace alpakaVendor::test;
 
@@ -66,8 +65,7 @@ TEMPLATE_LIST_TEST_CASE(
         auto x = alpaka::makeMdSpan(xb.data(), alpaka::Vec<std::size_t, 1u>{2u});
         auto y = alpaka::makeMdSpan(yb.data(), alpaka::Vec<std::size_t, 1u>{2u});
         auto r = alpaka::makeMdSpan(rb.data(), alpaka::Vec<std::size_t, 1u>{1u});
-        auto const xConst
-            = alpaka::makeMdSpan(static_cast<float const*>(xb.data()), alpaka::Vec<std::size_t, 1u>{2u});
+        auto const xConst = alpaka::makeMdSpan(static_cast<float const*>(xb.data()), alpaka::Vec<std::size_t, 1u>{2u});
 
         // Value_t is cv-preserving: MdSpan<const float> yields `const float`, exactly like base dev.
         static_assert(std::same_as<ValueOf<decltype(x)>, float>);

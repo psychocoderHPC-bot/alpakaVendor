@@ -997,8 +997,9 @@ TEMPLATE_LIST_TEST_CASE(
         auto Adouble = alpaka::makeMdSpan(
             static_cast<alpaka::math::Complex<double>*>(nullptr),
             extA,
-            alpaka::Vec<std::size_t, 2u>{2u * sizeof(alpaka::math::Complex<double>),
-                                        sizeof(alpaka::math::Complex<double>)});
+            alpaka::Vec<std::size_t, 2u>{
+                2u * sizeof(alpaka::math::Complex<double>),
+                sizeof(alpaka::math::Complex<double>)});
         using TViewA = decltype(A);
         using TViewC = decltype(upperC);
         using TViewAconst = decltype(Aconst);
