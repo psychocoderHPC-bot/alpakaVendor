@@ -6,6 +6,7 @@
 #pragma once
 
 #include "alpaka/blas/internal/api/blas.hpp"
+#include "alpaka/blas/internal/scaleTriangle.hpp"
 
 namespace alpaka::blas::onHost
 {
@@ -311,11 +312,21 @@ namespace alpaka::blas::onHost
      * standard HERK operation. ``C`` must carry an explicit ``upper(C)`` or ``lower(C)`` selection; the opposite
      * triangle and any padding are left unchanged. Transpose and unit-diagonal annotations on ``C`` are rejected.
      *
-     * On an actual update the written diagonal is real (its imaginary part is ignored). A true no-op (``n == 0``, or a
+     * On an actual update the written diagonal is real (its imaginary part is ignored); a true no-op (``n == 0``, or a
      * zero product contribution combined with ``beta == 1``) may leave ``C`` unchanged, including its diagonal; no
-     * unconditional diagonal canonicalization is promised. No special zero-scalar fast path is guaranteed, so ``k ==
-     * 0`` or ``alpha == 0`` are not guaranteed to leave the old selected triangle unread, and ``beta == 0`` is not
-     * guaranteed to skip reading the old selected ``C`` values.
+     * unconditional diagonal canonicalization is promised.
+     *
+     * Degenerate product contributions (``k == 0``, i.e. an empty rank-k product, or ``alpha == 0``) have
+     * well-defined ``beta`` scaling semantics:
+     *
+     * - ``n == 0`` is a true no-op: no element of ``C`` is read or written.
+     * - the selected triangle is ``beta * C``; with ``beta == 1`` this is a true no-op and with ``beta == 0`` the
+     *   selected triangle is zeroed without reading its previous values.
+     * - for complex ``C`` the diagonal stays real: the real scalar ``beta`` scales the diagonal's real part and its
+     *   imaginary part remains zero, and off-diagonal elements scale in both real and imaginary part.
+     *
+     * The degenerate ``k == 0`` / ``alpha == 0`` path never reads ``A`` and never calls the backend BLAS routine; it
+     * runs a queued triangle-scale kernel on the same queue, so ordering against other queued work is preserved.
      *
      * ``A`` and ``C`` must not overlap.
      *
@@ -347,7 +358,19 @@ namespace alpaka::blas::onHost
         static_assert(
             RealScalar<std::remove_cv_t<decltype(beta)>>,
             "herk requires a real beta, not a complex coefficient.");
+        internal::validateWritable<ALPAKA_TYPEOF(C)>();
         internal::validateHerk(A, C);
+        auto const ad = internal::makeMatrixDescriptor(A);
+        auto const n = internal::getTranspose(A) == Transpose::none ? ad.rows : ad.cols;
+        auto const k = internal::getTranspose(A) == Transpose::none ? ad.cols : ad.rows;
+        if(n == 0)
+            return; // nothing to do, no data access.
+        if(k == 0 || static_cast<Real_t<T>>(alpha) == Real_t<T>{0})
+        {
+            // The empty/zero rank-k product leaves the selected triangle as beta * C; A must not be read.
+            internal::enqueueScaleTriangle(queue, C, beta);
+            return;
+        }
         internal::HerkFn::call(queue, alpha, A, beta, C, options);
     }
 } // namespace alpaka::blas::onHost
