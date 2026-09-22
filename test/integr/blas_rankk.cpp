@@ -64,6 +64,14 @@ bool isFinite(T value)
     return std::isfinite(static_cast<Real>(value.real())) && std::isfinite(static_cast<Real>(value.imag()));
 }
 
+// Whether the public herk entry forms for the given argument types. Expressing the call through a variable-template
+// requires-expression makes the negative cases (unsatisfied constraints) produce `false` instead of a hard error.
+template<typename TQueue, typename TAlpha, typename TViewA, typename TBeta, typename TViewC>
+inline constexpr bool herkCallable = requires(TQueue& queue, TAlpha alpha, TViewA& A, TBeta beta, TViewC& C)
+{
+    alpaka::blas::onHost::herk(queue, alpha, A, beta, C);
+};
+
 TEMPLATE_LIST_TEST_CASE("BLAS herk complex Hermitian rank-k update", "[integr][blas][rankk][herk]", TestBackends)
 {
     auto deviceExec = getDeviceExecutorOrSkipTest(TestType::makeDict());
@@ -457,27 +465,40 @@ TEMPLATE_LIST_TEST_CASE(
             alpaka::onHost::wait(queue);
             CHECK(C[alpaka::Vec<uint32_t, 2u>{0u, 0u}] == before);
         }
-        // k=0: the BLAS spec leaves k=0 behavior undefined (a no-op or C=beta*C are both legal). OpenBLAS CHERK
-        // rejects a zero leading dimension (k=0 => lda=0) and returns without modifying C, so on the host
-        // backend the selected triangle is left unchanged. Only assert that vendor-specific behavior on the
-        // host API; other backends may legally scale, so just require the result to be finite there.
+        // k=0: the rank-k product is empty, so the selected triangle becomes beta * C. beta == 1 is a true no-op
+        // (the triangle, including a complex diagonal imaginary part, stays byte-identical); beta == 0 zeroes the
+        // selected triangle without reading it; any other beta scales the triangle in place. For complex C the
+        // diagonal stays real (imag == 0) whenever it is scaled.
+        for(auto const betaR : {0.0f, 1.0f, 2.5f})
         {
-            constexpr uint32_t n = 2u;
+            constexpr uint32_t n = 3u;
             auto A = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{n, 0u});
             auto C = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{n, n});
+            fillMatrixComplex(A, n, 0u);
             fillMatrixComplex(C, n, n);
+            // Seed a nonzero imaginary part on the diagonal so a preserved/zeroed diagonal is observable.
+            for(uint32_t i = 0; i < n; ++i)
+                C[alpaka::Vec<uint32_t, 2u>{i, i}].imag(Real{7.0f});
             auto const before = copyRaw(C.data(), n, n, ldOf(C));
             auto const ldC = ldOf(C);
-            auto upperC = alpaka::blas::upper(C);
-            alpaka::blas::onHost::herk(queue, Real{1.0f}, A, Real{2.0f}, upperC, options);
+            auto const upperC = alpaka::blas::upper(C);
+            alpaka::blas::onHost::herk(queue, Real{1.0f}, A, betaR, upperC, options);
             alpaka::onHost::wait(queue);
-            // The CPU CI backends in this suite are OpenBLAS-host and oneMKL-CPU, and both dispatch paths are
-            // expected to no-op on k=0: OpenBLAS CHERK returns without modifying C, and the oneapi path has an
-            // explicit degenerate-dims guard. Only assert this vendor-specific host behavior rather than the
-            // general BLAS contract.
             for(uint32_t i = 0; i < n; ++i)
                 for(uint32_t j = i; j < n; ++j)
-                    CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}] == before[i * ldC + j]);
+                {
+                    if(betaR == 0.0f)
+                        CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}] == Scalar{0.0f, 0.0f});
+                    else if(betaR == 1.0f)
+                        CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}] == before[i * ldC + j]);
+                    else if(i == j)
+                        // Diagonal stays real: beta scales the real part, the imaginary part is zero.
+                        CHECK(
+                            C[alpaka::Vec<uint32_t, 2u>{i, j}]
+                            == Scalar{betaR * before[i * ldC + j].real(), Real{0}});
+                    else
+                        CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}] == betaR * before[i * ldC + j]);
+                }
         }
         // Coefficient matrix: alpha in {0, 1, negative} and beta in {0, 1, nontrivial}. Fresh A and C per
         // combination so each case starts from the same initial state.
@@ -637,7 +658,7 @@ TEMPLATE_LIST_TEST_CASE(
 }
 
 TEMPLATE_LIST_TEST_CASE(
-    "BLAS herk rejects complex coefficients and mismatched types (static)",
+    "BLAS herk rejects complex coefficients, mismatched types and const C (static)",
     "[integr][blas][rankk][herk]",
     TestBackends)
 {
@@ -650,12 +671,198 @@ TEMPLATE_LIST_TEST_CASE(
     else
     {
         using Scalar = alpaka::math::Complex<float>;
-        // A complex alpha or beta (even with a zero imaginary part) is rejected at compile time by the
-        // static_asserts in the public wrapper, so the corresponding overload does not form.
-        static_assert(!alpaka::blas::RealScalar<alpaka::math::Complex<float>>);
-        static_assert(!alpaka::blas::RealScalar<alpaka::math::Complex<double>>);
-        // A and C must have the same element type (checked by the static_assert in the wrapper).
-        static_assert(!std::same_as<Scalar, float>);
+        using Real = RealOf<Scalar>;
+
+        constexpr auto extA = alpaka::Vec<uint32_t, 2u>{3u, 2u};
+        constexpr auto extC = alpaka::Vec<uint32_t, 2u>{3u, 3u};
+        auto storageA = alpaka::onHost::allocUnified<Scalar>(device, 6u);
+        auto storageC = alpaka::onHost::allocUnified<Scalar>(device, 9u);
+        auto A = alpaka::makeMdSpan(
+            storageA.data(),
+            extA,
+            alpaka::Vec<std::size_t, 2u>{2u * sizeof(Scalar), sizeof(Scalar)});
+        auto C = alpaka::makeMdSpan(
+            storageC.data(),
+            extC,
+            alpaka::Vec<std::size_t, 2u>{3u * sizeof(Scalar), sizeof(Scalar)});
+        fillMatrixComplex(A, 3u, 2u);
+        fillMatrixComplex(C, 3u, 3u);
+        auto const upperC = alpaka::blas::upper(C);
+        auto const Aconst = alpaka::makeMdSpan(
+            static_cast<Scalar const*>(storageA.data()),
+            extA,
+            alpaka::Vec<std::size_t, 2u>{2u * sizeof(Scalar), sizeof(Scalar)});
+        auto const Cconst = alpaka::makeMdSpan(
+            static_cast<Scalar const*>(storageC.data()),
+            extC,
+            alpaka::Vec<std::size_t, 2u>{3u * sizeof(Scalar), sizeof(Scalar)});
+        auto const upperCconst = alpaka::blas::upper(Cconst);
+        // A float-element (real) matrix cannot be used for herk; the empty view type is enough to prove rejection.
+        auto Afloat = alpaka::makeMdSpan(
+            static_cast<float*>(nullptr),
+            extA,
+            alpaka::Vec<std::size_t, 2u>{2u * sizeof(float), sizeof(float)});
+        using TViewA = decltype(A);
+        using TViewC = decltype(upperC);
+        using TViewAconst = decltype(Aconst);
+        using TViewCconst = decltype(upperCconst);
+        using TViewAfloat = decltype(Afloat);
+
+        // Positive control: writable upper(C), complex A, real coefficients.
+        static_assert(herkCallable<int, Real, TViewA, Real, TViewC>);
+        // Read-only A works: a const-element A is a valid input view (descriptor Value_t is cv-stripped).
+        static_assert(herkCallable<int, Real, TViewAconst, Real, TViewC>);
+        // Rejections: const-element C, real-valued A, complex alpha, complex beta, and mismatched A/C element types.
+        static_assert(!herkCallable<int, Real, TViewA, Real, TViewCconst>);
+        static_assert(!herkCallable<int, Real, TViewAfloat, Real, TViewC>);
+        static_assert(!herkCallable<int, Scalar, TViewA, Real, TViewC>);
+        static_assert(!herkCallable<int, Real, TViewA, Scalar, TViewC>);
         SUCCEED();
     }
 }
+
+TEMPLATE_LIST_TEST_CASE(
+    "BLAS herk read-only A (const element) accepted for all herk scalar types",
+    "[integr][blas][rankk][herk]",
+    TestBackends)
+{
+    auto deviceExec = getDeviceExecutorOrSkipTest(TestType::makeDict());
+    auto device = getDevice(deviceExec);
+    if constexpr(!isBlasBackendEnabledForDevice(device))
+    {
+        SKIP("No BLAS backend enabled for this alpaka API.");
+    }
+    else
+    {
+        auto queue = device.makeQueue();
+        auto const options = alpaka::blas::Options{
+            .precision = alpaka::blas::Precision::exact,
+            .algorithm = alpaka::blas::Algorithm::fastest};
+        auto runCase = [&]<typename Scalar>()
+        {
+            using Real = RealOf<Scalar>;
+            constexpr uint32_t n = 3u;
+            constexpr uint32_t k = 2u;
+            auto Abuf = alpaka::onHost::allocUnified<Scalar>(device, n * k);
+            auto Cbuf = alpaka::onHost::allocUnified<Scalar>(device, n * n);
+            auto A = alpaka::makeMdSpan(
+                Abuf.data(),
+                alpaka::Vec<uint32_t, 2u>{n, k},
+                alpaka::Vec<std::size_t, 2u>{k * sizeof(Scalar), sizeof(Scalar)});
+            auto C = alpaka::makeMdSpan(
+                Cbuf.data(),
+                alpaka::Vec<uint32_t, 2u>{n, n},
+                alpaka::Vec<std::size_t, 2u>{n * sizeof(Scalar), sizeof(Scalar)});
+            fillMatrixComplex(A, n, k);
+            fillMatrixComplex(C, n, n);
+            // Copy the pre-state so the reference can apply the beta scaling.
+            auto before = copyRaw(Cbuf.data(), n, n, ldOf(C));
+            // Build a read-only view over A: MdSpan<const Scalar>.
+            auto Aconst = alpaka::makeMdSpan(
+                static_cast<Scalar const*>(Abuf.data()),
+                alpaka::Vec<uint32_t, 2u>{n, k},
+                alpaka::Vec<std::size_t, 2u>{k * sizeof(Scalar), sizeof(Scalar)});
+            auto upperC = alpaka::blas::upper(C);
+            alpaka::blas::onHost::herk(queue, Real{1.0f}, Aconst, Real{0.5f}, upperC, options);
+            alpaka::onHost::wait(queue);
+            // Compare against the reference for C = 1.0*A*adjoint(A) + 0.5*C over the copied pre-state.
+            auto const ldA = ldOf(A);
+            auto const ldC = ldOf(C);
+            auto const Aref = copyRaw(Abuf.data(), n, k, ldA);
+            auto Cref = copyRaw(before.data(), n, n, ldC);
+            blas::herkRef(
+                Real{1.0f},
+                Aref.data(),
+                ldA,
+                n,
+                k,
+                alpaka::blas::Transpose::none,
+                Real{0.5f},
+                Cref.data(),
+                ldC,
+                n,
+                alpaka::blas::Triangle::upper);
+            for(uint32_t i = 0; i < n; ++i)
+                for(uint32_t j = i; j < n; ++j)
+                {
+                    auto const eps = std::same_as<Real, double> ? 1e-12 : 1e-4;
+                    CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}].real() == Catch::Approx(Cref[i * ldC + j].real()).epsilon(eps));
+                    CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}].imag() == Catch::Approx(Cref[i * ldC + j].imag()).epsilon(eps));
+                }
+        };
+        runCase.template operator()<alpaka::math::Complex<float>>();
+        runCase.template operator()<alpaka::math::Complex<double>>();
+    }
+}
+
+TEMPLATE_LIST_TEST_CASE(
+    "BLAS herk oversized dimensions rejected by checkedCast",
+    "[integr][blas][rankk][herk]",
+    TestBackends)
+{
+    auto deviceExec = getDeviceExecutorOrSkipTest(TestType::makeDict());
+    auto device = getDevice(deviceExec);
+    if constexpr(!isBlasBackendEnabledForDevice(device))
+    {
+        SKIP("No BLAS backend enabled for this alpaka API.");
+    }
+    else
+    {
+        auto queue = device.makeQueue();
+        using Scalar = alpaka::math::Complex<float>;
+        constexpr uint32_t n = 3u;
+        constexpr uint32_t k = 3u;
+        // An enormous leading dimension: the pitch overflows the 32-bit vendor int parameters used by the
+        // host/cuda/hip herk dispatches (and by the degenerate scale-kernel branch).
+        constexpr std::size_t hugeLd = static_cast<std::size_t>(std::numeric_limits<uint32_t>::max()) + 2u;
+        auto Astorage = alpaka::onHost::allocUnified<Scalar>(device, 16u);
+        auto Cstorage = alpaka::onHost::allocUnified<Scalar>(device, 16u);
+        auto A = alpaka::makeMdSpan(
+            Astorage.data(),
+            alpaka::Vec<uint32_t, 2u>{n, k},
+            alpaka::Vec<std::size_t, 2u>{hugeLd * sizeof(Scalar), sizeof(Scalar)});
+        auto C = alpaka::makeMdSpan(
+            Cstorage.data(),
+            alpaka::Vec<uint32_t, 2u>{n, n},
+            alpaka::Vec<std::size_t, 2u>{hugeLd * sizeof(Scalar), sizeof(Scalar)});
+        auto Cst = alpaka::onHost::allocUnified<Scalar>(device, 16u);
+        auto Cbig = alpaka::makeMdSpan(
+            Cst.data(),
+            alpaka::Vec<uint32_t, 2u>{n, n},
+            alpaka::Vec<std::size_t, 2u>{hugeLd * sizeof(Scalar), sizeof(Scalar)});
+        auto Cnormal = alpaka::makeMdSpan(
+            Cst.data(),
+            alpaka::Vec<uint32_t, 2u>{n, n},
+            alpaka::Vec<std::size_t, 2u>{static_cast<std::size_t>(n) * sizeof(Scalar), sizeof(Scalar)});
+        auto Anormal = alpaka::makeMdSpan(
+            Astorage.data(),
+            alpaka::Vec<uint32_t, 2u>{n, k},
+            alpaka::Vec<std::size_t, 2u>{static_cast<std::size_t>(n) * sizeof(Scalar), sizeof(Scalar)});
+        // Deliberately fill none of the oversized views: the enormous pitch means any element write would overflow
+        // the tiny backing storage. The rejection must come from metadata alone, before any data access.
+        if constexpr(!std::same_as<ALPAKA_TYPEOF(device.getApi()), alpaka::api::OneApi>)
+        {
+            auto upperC = alpaka::blas::upper(C);
+            CHECK_THROWS_AS(
+                alpaka::blas::onHost::herk(queue, 1.0f, A, 1.0f, upperC), std::invalid_argument);
+            // C-ld only oversized: the A descriptor is well-formed, C's cdLd must still be rejected.
+            auto upperCbig = alpaka::blas::upper(Cbig);
+            CHECK_THROWS_AS(
+                alpaka::blas::onHost::herk(queue, 1.0f, A, 1.0f, upperCbig), std::invalid_argument);
+            // Degenerate branch (k==0/alpha==0) bypasses the vendor dispatch, so an oversized C ld must be rejected
+            // by the scale path itself. An oversized A ld is harmless there (A is never read) and must be accepted
+            // while C is well-formed -- verified by the succeeding calls below. beta == 1 is a true no-op and must
+            // not touch any metadata, so it is accepted even for the oversized-C view.
+            alpaka::blas::onHost::herk(queue, 0.0f, Anormal, 1.0f, upperCbig);
+            alpaka::onHost::wait(queue);
+            CHECK_THROWS_AS(
+                alpaka::blas::onHost::herk(queue, 0.0f, Anormal, 2.0f, upperCbig), std::invalid_argument);
+            // Oversized A ld but well-formed C: accepted in the degenerate branch (A untouched), and a non-degenerate
+            // run proceeds far enough to reject via the A dispatch checkedCast.
+            auto upperCnormal = alpaka::blas::upper(Cnormal);
+            CHECK_THROWS_AS(
+                alpaka::blas::onHost::herk(queue, 1.0f, A, 1.0f, upperCnormal), std::invalid_argument);
+        }
+    }
+}
+
