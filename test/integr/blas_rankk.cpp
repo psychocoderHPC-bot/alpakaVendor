@@ -837,10 +837,10 @@ TEMPLATE_LIST_TEST_CASE(
             CHECK_THROWS_AS(
                 alpaka::blas::onHost::syrk(queue, Scalar{1.0}, A, Scalar{1.0}, upperC),
                 std::invalid_argument);
-            // C-ld only oversized: the A descriptor is well-formed, C's cdLd must still be rejected.
+            // C-ld only oversized: the A descriptor is well-formed (normal A), C's cdLd must still be rejected.
             auto upperCbig = alpaka::blas::upper(Cbig);
             CHECK_THROWS_AS(
-                alpaka::blas::onHost::syrk(queue, Scalar{1.0}, A, Scalar{1.0}, upperCbig),
+                alpaka::blas::onHost::syrk(queue, Scalar{1.0}, Anormal, Scalar{1.0}, upperCbig),
                 std::invalid_argument);
             // Degenerate branch (alpha == 0) bypasses the vendor dispatch, so an oversized C ld must be rejected by
             // the scale path itself. An oversized A ld is harmless there (A is never read) and must be accepted while
