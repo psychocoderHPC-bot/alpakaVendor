@@ -791,6 +791,114 @@ TEMPLATE_LIST_TEST_CASE(
 }
 
 TEMPLATE_LIST_TEST_CASE(
+    "BLAS herk degenerate scale with padded ld treats triangle and padding as disjoint",
+    "[integr][blas][rankk][herk]",
+    TestBackends)
+{
+    auto deviceExec = getDeviceExecutorOrSkipTest(TestType::makeDict());
+    auto device = getDevice(deviceExec);
+    if constexpr(!isBlasBackendEnabledForDevice(device))
+    {
+        SKIP("No BLAS backend enabled for this alpaka API.");
+    }
+    else
+    {
+        auto queue = device.makeQueue();
+        auto const options = alpaka::blas::Options{
+            .precision = alpaka::blas::Precision::exact,
+            .algorithm = alpaka::blas::Algorithm::fastest};
+
+        using Scalar = alpaka::math::Complex<float>;
+        using Real = RealOf<Scalar>;
+        auto const nanV = Scalar{static_cast<Real>(std::nan("")), static_cast<Real>(std::nan(""))};
+        constexpr uint32_t n = 4u;
+        constexpr uint32_t pad = 7u; // ld = pad > n: padding columns exist to the right of every row.
+        // k == 0 degenerate branch: the selected (upper) triangle becomes beta * C.
+        {
+            auto A = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{n, 0u});
+            auto storageC = alpaka::onHost::allocUnified<Scalar>(device, n * pad);
+            auto C = alpaka::makeMdSpan(
+                storageC.data(),
+                alpaka::Vec<uint32_t, 2u>{n, n},
+                alpaka::Vec<std::size_t, 2u>{pad * sizeof(Scalar), sizeof(Scalar)});
+            // Selected triangle: NaN so a read would propagate NaN. Opposite triangle and padding: distinct
+            // sentinels that must stay byte-identical.
+            auto const lowerSentinel = Scalar{Real(0x1'1111'1111), Real(0x1'1111'1111)};
+            auto const padSentinel = Scalar{Real(0x5'a5a5'a5af), Real(0x5'a5a5'a5af)};
+            for(uint32_t i = 0; i < n; ++i)
+                for(uint32_t j = 0; j < pad; ++j)
+                {
+                    if(j >= n)
+                        C[alpaka::Vec<uint32_t, 2u>{i, j}] = padSentinel;
+                    else if(j >= i)
+                        C[alpaka::Vec<uint32_t, 2u>{i, j}] = nanV; // selected upper triangle: must be zeroed
+                    else
+                        C[alpaka::Vec<uint32_t, 2u>{i, j}] = lowerSentinel; // opposite triangle: untouched
+                }
+            auto upperC = alpaka::blas::upper(C);
+            // beta == 0: the selected triangle is exactly zeroed and the old NaN values must not be read.
+            alpaka::blas::onHost::herk(queue, Real{1.0f}, A, Real{0.0f}, upperC, options);
+            alpaka::onHost::wait(queue);
+            for(uint32_t i = 0; i < n; ++i)
+                for(uint32_t j = 0; j < pad; ++j)
+                {
+                    if(j >= n)
+                        CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}] == padSentinel);
+                    else if(j >= i)
+                        CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}] == Scalar{0.0f, 0.0f});
+                    else
+                        CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}] == lowerSentinel);
+                }
+        }
+        // beta != 0 and beta != 1 on a padded C: the selected triangle scales in place (real diagonal), the
+        // opposite triangle and the padding stay byte-identical.
+        {
+            auto A = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{n, 0u});
+            auto storageC = alpaka::onHost::allocUnified<Scalar>(device, n * pad);
+            auto C = alpaka::makeMdSpan(
+                storageC.data(),
+                alpaka::Vec<uint32_t, 2u>{n, n},
+                alpaka::Vec<std::size_t, 2u>{pad * sizeof(Scalar), sizeof(Scalar)});
+            auto const lowerSentinel = Scalar{Real(0x2'2222'2222), Real(0x2'2222'2222)};
+            auto const padSentinel = Scalar{Real(0x6'a6a6'a6af), Real(0x6'a6a6'a6af)};
+            for(uint32_t i = 0; i < n; ++i)
+                for(uint32_t j = 0; j < pad; ++j)
+                {
+                    if(j >= n)
+                        C[alpaka::Vec<uint32_t, 2u>{i, j}] = padSentinel;
+                    else if(j >= i)
+                        C[alpaka::Vec<uint32_t, 2u>{i, j}] = Scalar{Real{2.0f * i + j + 1}, Real{9.0f - 3.0f * i + j}};
+                    else
+                        C[alpaka::Vec<uint32_t, 2u>{i, j}] = lowerSentinel;
+                }
+            auto const before = copyRaw(storageC.data(), n, n, pad);
+            auto const ldC = static_cast<std::size_t>(pad);
+            auto lowerC = alpaka::blas::lower(C);
+            auto const betaR = Real{2.5f};
+            alpaka::blas::onHost::herk(queue, Real{1.0f}, A, betaR, lowerC, options);
+            alpaka::onHost::wait(queue);
+            for(uint32_t i = 0; i < n; ++i)
+                for(uint32_t j = 0; j < pad; ++j)
+                {
+                    if(j >= n)
+                        CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}] == padSentinel);
+                    else if(j <= i)
+                    {
+                        if(i == j)
+                            CHECK(
+                                C[alpaka::Vec<uint32_t, 2u>{i, j}]
+                                == Scalar{betaR * before[i * ldC + j].real(), Real{0}});
+                        else
+                            CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}] == betaR * before[i * ldC + j]);
+                    }
+                    else
+                        CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}] == before[i * ldC + j]);
+                }
+        }
+    }
+}
+
+TEMPLATE_LIST_TEST_CASE(
     "BLAS herk validation rejects bad shapes, annotations, and complex coefficients",
     "[integr][blas][rankk][herk]",
     TestBackends)
@@ -883,21 +991,32 @@ TEMPLATE_LIST_TEST_CASE(
             static_cast<float*>(nullptr),
             extA,
             alpaka::Vec<std::size_t, 2u>{2u * sizeof(float), sizeof(float)});
+        // A complex-double A cannot be combined with a complex-float C (mismatched complex element types must be
+        // rejected, not silently dispatched on one of the two types). Empty views are enough: the requires clause
+        // and validateHerk() fire before any data access.
+        auto Adouble = alpaka::makeMdSpan(
+            static_cast<alpaka::math::Complex<double>*>(nullptr),
+            extA,
+            alpaka::Vec<std::size_t, 2u>{2u * sizeof(alpaka::math::Complex<double>),
+                                        sizeof(alpaka::math::Complex<double>)});
         using TViewA = decltype(A);
         using TViewC = decltype(upperC);
         using TViewAconst = decltype(Aconst);
         using TViewCconst = decltype(upperCconst);
         using TViewAfloat = decltype(Afloat);
+        using TViewAdouble = decltype(Adouble);
 
         // Positive control: writable upper(C), complex A, real coefficients.
         static_assert(herkCallable<int, Real, TViewA, Real, TViewC>);
         // Read-only A works: a const-element A is a valid input view (descriptor Value_t is cv-stripped).
         static_assert(herkCallable<int, Real, TViewAconst, Real, TViewC>);
-        // Rejections: const-element C, real-valued A, complex alpha, complex beta, and mismatched A/C element types.
+        // Rejections: const-element C, real-valued A, complex alpha, complex beta, mismatched A/C element types, and
+        // a Complex<double> A combined with a Complex<float> C.
         static_assert(!herkCallable<int, Real, TViewA, Real, TViewCconst>);
         static_assert(!herkCallable<int, Real, TViewAfloat, Real, TViewC>);
         static_assert(!herkCallable<int, Scalar, TViewA, Real, TViewC>);
         static_assert(!herkCallable<int, Real, TViewA, Scalar, TViewC>);
+        static_assert(!herkCallable<int, double, TViewAdouble, double, TViewC>);
         SUCCEED();
     }
 }
@@ -1031,12 +1150,13 @@ TEMPLATE_LIST_TEST_CASE(
         // Backend-generic guards of the degenerate triangle-scale path (enqueueScaleTriangle): they run for every
         // backend including oneAPI, so they are tested outside the !OneApi exclusion below.
         //
-        // Scale-path ldc rejection: an oversized C leading dimension must be rejected by the scale path itself when
-        // the degenerate branch bypasses the vendor dispatch.
-        // beta == 1 is a true no-op and must not touch any metadata, so it is accepted even for the oversized-C view.
+        // Scale-path metadata envelope: the degenerate branch is a generic kernel. With 64-bit index math there is
+        // no n*n index-domain limit (the kernel traverses one row per work item), so n in (65535, UINT32_MAX] is
+        // accepted and only n > UINT32_MAX is rejected (the uint32 index domain of the frame); the C leading
+        // dimension stays 64-bit, aligned with the oneMKL herk int64 dims. An enormously-pitched C is therefore
+        // accepted on the no-op (beta == 1) path without touching any metadata -- the no-op never reads or writes.
         alpaka::blas::onHost::herk(queue, 0.0f, Anormal, 1.0f, upperCbig);
         alpaka::onHost::wait(queue);
-        CHECK_THROWS_AS(alpaka::blas::onHost::herk(queue, 0.0f, Anormal, 2.0f, upperCbig), std::invalid_argument);
         // Scale-path n>uint32-max guard: a degenerate (k==0) herk whose C claims more than uint32 rows must be
         // rejected before any kernel is enqueued. Metadata only -- a tiny backing storage is used. C's pitch must
         // itself encode the huge row count so the shape validation passes and only the scale path's n>uint32-max
@@ -1058,6 +1178,30 @@ TEMPLATE_LIST_TEST_CASE(
             // k==0 degenerates to the scale kernel; with beta != 1 the n>uint32-max guard must throw.
             auto upperChugeN = alpaka::blas::upper(ChugeN);
             CHECK_THROWS_AS(alpaka::blas::onHost::herk(queue, 1.0f, AhugeN, 2.0f, upperChugeN), std::invalid_argument);
+        }
+        // An intermediate n in (65535, UINT32_MAX] is accepted by the scale path (no n*n index-domain limit exists
+        // anymore); it is only exercised here on the beta==1 no-op path because a real kernel run over that range
+        // needs an n*n element allocation (infeasible as metadata-only). The no-op proves the 65536 fence is gone:
+        // no metadata guard triggers for such an n.
+        {
+            constexpr auto midN = static_cast<std::size_t>(std::numeric_limits<std::uint16_t>::max()) + 2u;
+            static_assert(midN > 65535u && midN <= std::numeric_limits<uint32_t>::max());
+            auto AstorageM = alpaka::onHost::allocUnified<Scalar>(device, 16u);
+            auto CstorageM = alpaka::onHost::allocUnified<Scalar>(device, 16u);
+            auto AmidN = alpaka::makeMdSpan(
+                AstorageM.data(),
+                alpaka::Vec<std::size_t, 2u>{midN, std::size_t{0u}},
+                alpaka::Vec<std::size_t, 2u>{std::size_t{0u}, sizeof(Scalar)});
+            auto CmidN = alpaka::makeMdSpan(
+                CstorageM.data(),
+                alpaka::Vec<std::size_t, 2u>{midN, midN},
+                alpaka::Vec<std::size_t, 2u>{midN * sizeof(Scalar), sizeof(Scalar)});
+            auto upperCmidN = alpaka::blas::upper(CmidN);
+            // beta == 1: the degenerate branch is a true no-op, accepted for the (65535, UINT32_MAX] range without
+            // touching the metadata of C.
+            alpaka::blas::onHost::herk(queue, 1.0f, AmidN, 1.0f, upperCmidN);
+            alpaka::onHost::wait(queue);
+            SUCCEED();
         }
         if constexpr(!std::same_as<ALPAKA_TYPEOF(device.getApi()), alpaka::api::OneApi>)
         {
