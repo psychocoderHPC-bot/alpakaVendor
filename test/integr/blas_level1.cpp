@@ -205,27 +205,33 @@ TEMPLATE_LIST_TEST_CASE("BLAS level1 dotc conjugated dot product", "[integr][bla
         // so BLAS increments exposed through the descriptor are always 1. A view with a nonzero starting offset must
         // still honor its shifted base pointer; this guards the descriptor base-pointer forwarding used for n = 1 and
         // for the acceptance example below. Non-unit 1D strides are not expressible through alpaka 1D MdSpan views.
-        if constexpr(std::same_as<ALPAKA_TYPEOF(device.getApi()), alpaka::api::Host>)
+        // Unified-memory buffers make the same shifted views runnable on the CUDA/HIP/oneAPI device APIs, so this
+        // block is not restricted to the host API anymore.
         {
             using Real = double;
             constexpr uint32_t off = 2u;
             constexpr uint32_t subN = 3u;
-            auto hostX = std::vector<Real>(off + subN, Real{-21.0});
-            auto hostY = std::vector<Real>(off + subN, Real{-22.0});
+            constexpr uint32_t padN = off + subN;
+            auto xb = alpaka::onHost::allocUnified<Real>(device, padN);
+            auto yb = alpaka::onHost::allocUnified<Real>(device, padN);
+            for(uint32_t i = 0; i < padN; ++i)
+                xb.data()[i] = Real{-21.0};
+            for(uint32_t i = 0; i < padN; ++i)
+                yb.data()[i] = Real{-22.0};
             for(uint32_t i = 0; i < subN; ++i)
             {
-                hostX[off + i] = static_cast<Real>(i + 1);
-                hostY[off + i] = static_cast<Real>(2 * (i + 1));
+                xb.data()[off + i] = static_cast<Real>(i + 1);
+                yb.data()[off + i] = static_cast<Real>(2 * (i + 1));
             }
             auto xConst
-                = alpaka::makeMdSpan(static_cast<Real const*>(hostX.data() + off), alpaka::Vec<std::size_t, 1u>{subN});
+                = alpaka::makeMdSpan(static_cast<Real const*>(xb.data() + off), alpaka::Vec<std::size_t, 1u>{subN});
             auto yConst
-                = alpaka::makeMdSpan(static_cast<Real const*>(hostY.data() + off), alpaka::Vec<std::size_t, 1u>{subN});
+                = alpaka::makeMdSpan(static_cast<Real const*>(yb.data() + off), alpaka::Vec<std::size_t, 1u>{subN});
             auto dotcS = alpaka::onHost::allocUnified<Real>(device, 1u);
             alpaka::blas::onHost::dotc(queue, xConst, yConst, dotcS, options);
             auto expected = Real{0};
             for(uint32_t i = 0; i < subN; ++i)
-                expected += hostX[off + i] * hostY[off + i];
+                expected += xb.data()[off + i] * yb.data()[off + i];
             alpaka::onHost::wait(queue);
             CHECK(dotcS.data()[0] == Catch::Approx(expected).epsilon(1e-12));
         }
@@ -261,6 +267,58 @@ TEMPLATE_LIST_TEST_CASE("BLAS level1 dotc conjugated dot product", "[integr][bla
         CHECK(dotcA.data()[0].imag() == Catch::Approx(6.0).epsilon(1e-12));
         CHECK(dotA.data()[0].real() == Catch::Approx(5.0).epsilon(1e-12));
         CHECK(dotA.data()[0].imag() == Catch::Approx(16.0).epsilon(1e-12));
+    }
+}
+
+TEMPLATE_LIST_TEST_CASE(
+    "BLAS dotc queue ordering: producer to dotc to consumer with one final wait",
+    "[integr][blas][level1][dotc]",
+    TestBackends)
+{
+    auto deviceExec = getDeviceExecutorOrSkipTest(TestType::makeDict());
+    auto device = getDevice(deviceExec);
+    if constexpr(!isBlasBackendEnabledForDevice(device))
+    {
+        SKIP("No BLAS backend enabled for this alpaka API.");
+    }
+    else
+    {
+        auto queue = device.makeQueue();
+        auto const options = alpaka::blas::Options{
+            .precision = alpaka::blas::Precision::exact,
+            .algorithm = alpaka::blas::Algorithm::fastest};
+
+        using Real = float;
+        constexpr uint32_t n = 4u;
+        // Producer buffer pair and consumer result on the same queue. The producer overwrites the input buffers with
+        // a known pattern through a queued BLAS copy, dotc reads them, and the consumer (a plain host read after the
+        // single final wait) must observe the ordered result. dotc must neither run before the producer nor be
+        // silently dropped nor use a different stream: any of those would change the expected sum.
+        auto xsrc = alpaka::onHost::allocUnified<Real>(device, n);
+        auto ysrc = alpaka::onHost::allocUnified<Real>(device, n);
+        auto x = alpaka::onHost::allocUnified<Real>(device, n);
+        auto y = alpaka::onHost::allocUnified<Real>(device, n);
+        auto dotcOut = alpaka::onHost::allocUnified<Real>(device, 1u);
+        for(uint32_t i = 0; i < n; ++i)
+        {
+            x.data()[i] = Real(-1.0);
+            y.data()[i] = Real(-2.0);
+            xsrc.data()[i] = static_cast<Real>(i + 1);
+            ysrc.data()[i] = static_cast<Real>(2 * (i + 1));
+        }
+        dotcOut.data()[0] = Real(-99.0);
+
+        // Producer: two queued BLAS copies fill x and y from xsrc/ysrc on the same queue as the dotc.
+        alpaka::blas::onHost::copy(queue, xsrc, x, options);
+        alpaka::blas::onHost::copy(queue, ysrc, y, options);
+        // dotc on the same queue.
+        alpaka::blas::onHost::dotc(queue, x, y, dotcOut, options);
+        // Consumer: exactly one wait at the end.
+        alpaka::onHost::wait(queue);
+        auto expected = Real{0};
+        for(uint32_t i = 0; i < n; ++i)
+            expected += xsrc.data()[i] * ysrc.data()[i];
+        CHECK(dotcOut.data()[0] == Catch::Approx(expected).epsilon(1e-4f));
     }
 }
 
