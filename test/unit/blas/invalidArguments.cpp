@@ -18,9 +18,13 @@ inline constexpr bool dotcCallable = requires(TQueue& queue, TViewX const& x, TV
     alpaka::blas::onHost::dotc(queue, x, y, result);
 };
 
-// Whether the public dot entry forms for the given argument types. This guards that the pre-existing `dot` keeps the
-// exact base-dev behavior (50b3d837): the base already accepted read-only x views and mixed x/y element types through
-// its cv-stripped dispatch, and the PR-11 cv fix must not change that acceptance matrix.
+// Whether the public dot entry form for the given argument types compiles. `dot` is deliberately unconstrained (its
+// body only carries static_asserts and runtime checks), so this is a formability-only probe: it never instantiates the
+// backend dispatcher and cannot detect a dispatch regression. It is a regression guard for the round-2 `Value_t`
+// revert (9e2ea37 restored base behavior after the cv-stripped head dba5ddc changed dispatch): it asserts that the
+// acceptance matrix is unchanged relative to base dev 50b3d837, NOT that every accepted form is correct. Base dev is
+// cv-preserving (`Value_t` keeps const), so a mixed call like dot(x<const float>, y<double>) is a pre-existing
+// base-dev hazard (host `OpenBlas<float const>` unspecialized / CUDA misdispatch), not supported parity behavior.
 template<typename TQueue, typename TViewX, typename TViewY, typename TViewResult>
 inline constexpr bool dotCallable = requires(TQueue& queue, TViewX const& x, TViewY const& y, TViewResult& result) {
     alpaka::blas::onHost::dot(queue, x, y, result);
@@ -121,11 +125,16 @@ TEMPLATE_LIST_TEST_CASE(
         static_assert(dotcCallable<TQueue, TViewX, TViewYConst, TViewResult>);
         SUCCEED();
 
-        // Pre-existing `dot` mixed-type regression guard: `dot` must keep the exact base-dev (50b3d837) acceptance
-        // matrix. Base dev accepted read-only x views and mixed x/y element types (both silently dispatch through the
-        // cv-stripped Value_t), and the PR-11 Value_t revert must not change that. The only `dot` difference between
-        // base and this branch is the added in-body writable-result static_assert, which does not alter which calls
-        // form (the overload is unconstrained), so every probe below must match base-dev behavior exactly.
+        // Pre-existing `dot` acceptance-matrix regression guard: the probes below must match base-dev (50b3d837)
+        // formability exactly. Base dev accepts read-only x views and mixed x/y element types because its dot body is
+        // unconstrained (backend dispatch handles them, wrongly in the const/mixed cases, but that hazard predates
+        // this branch); the round-2 Value_t revert (9e2ea37) restored that cv-preserving behavior. The only `dot`
+        // difference between base and this branch is the added in-body writable-result static_assert, which does not
+        // alter which calls form (the overload is unconstrained), so every probe below must match base-dev behavior
+        // exactly. A dispatch-level probe is intentionally not added here: instantiating `internal::DotFn::call` with
+        // const/mixed element types hard-errors on host (`OpenBlas<float const>` is unspecialized) and would flip the
+        // very matrix this guard exists to pin. The healthy <float,float,float> dot form's dispatch is already
+        // exercised by the runtime CHECK_THROWS_AS calls above (which call through the full wrapper body).
         static_assert(dotCallable<TQueue, TViewX, TViewY, TViewResult>);
         static_assert(dotCallable<TQueue, TViewX, TViewYConst, TViewResult>);
         static_assert(dotCallable<TQueue, TViewX, TViewYDouble, TViewResult>);
