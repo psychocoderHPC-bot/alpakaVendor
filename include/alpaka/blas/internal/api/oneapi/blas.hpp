@@ -271,7 +271,7 @@ namespace alpaka::blas::internal
         auto& result,
         [[maybe_unused]] Options options)
     {
-        using T = Value_t<ALPAKA_TYPEOF(x)>;
+        using Scalar = std::remove_cv_t<Value_t<ALPAKA_TYPEOF(x)>>;
         auto const xd = makeVectorDescriptor(x);
         auto const yd = makeVectorDescriptor(y);
         auto* resultPtr = alpaka::onHost::data(getView(result));
@@ -279,13 +279,13 @@ namespace alpaka::blas::internal
             [=](sycl::queue q) -> sycl::event
             {
                 auto deps = std::vector<sycl::event>{q.ext_oneapi_submit_barrier()};
-                if constexpr(ComplexScalar<T>)
+                if constexpr(ComplexScalar<Scalar>)
                     return oneapi::mkl::blas::dotc(
                         q,
                         xd.n,
-                        oneMklPtr<T>(xd.constPtr),
+                        oneMklPtr<Scalar>(xd.constPtr),
                         xd.inc,
-                        oneMklPtr<T>(yd.constPtr),
+                        oneMklPtr<Scalar>(yd.constPtr),
                         yd.inc,
                         oneMklValuePtr(resultPtr),
                         deps);
@@ -293,9 +293,9 @@ namespace alpaka::blas::internal
                     return oneapi::mkl::blas::dot(
                         q,
                         xd.n,
-                        oneMklPtr<T>(xd.constPtr),
+                        oneMklPtr<Scalar>(xd.constPtr),
                         xd.inc,
-                        oneMklPtr<T>(yd.constPtr),
+                        oneMklPtr<Scalar>(yd.constPtr),
                         yd.inc,
                         oneMklValuePtr(resultPtr),
                         deps);

@@ -373,7 +373,7 @@ namespace alpaka::blas::internal
         auto& result,
         [[maybe_unused]] Options options)
     {
-        using T = Value_t<ALPAKA_TYPEOF(x)>;
+        using Scalar = std::remove_cv_t<Value_t<ALPAKA_TYPEOF(x)>>;
         auto const xd = makeVectorDescriptor(x);
         auto const yd = makeVectorDescriptor(y);
         auto const nInt = checkedCast<int>(xd.n, "dotc n");
@@ -383,11 +383,11 @@ namespace alpaka::blas::internal
         queue.enqueueNativeFn(
             [=](auto)
             {
-                resultPtr[0] = OpenBlas<T>::dotc(
+                resultPtr[0] = OpenBlas<Scalar>::dotc(
                     nInt,
-                    static_cast<T const*>(xd.constPtr),
+                    static_cast<Scalar const*>(xd.constPtr),
                     incxInt,
-                    static_cast<T const*>(yd.constPtr),
+                    static_cast<Scalar const*>(yd.constPtr),
                     incyInt);
             });
     }

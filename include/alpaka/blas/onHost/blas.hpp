@@ -136,15 +136,29 @@ namespace alpaka::blas::onHost
         concepts::VectorView auto const& y,
         concepts::VectorView auto& result,
         Options options = {})
+        requires(
+            std::same_as<
+                std::remove_cv_t<internal::Value_t<ALPAKA_TYPEOF(x)>>,
+                std::remove_cv_t<internal::Value_t<ALPAKA_TYPEOF(y)>>>
+            && std::same_as<
+                std::remove_cv_t<internal::Value_t<ALPAKA_TYPEOF(x)>>,
+                std::remove_cv_t<internal::Value_t<ALPAKA_TYPEOF(result)>>>
+            && !std::is_const_v<alpaka::GetValueType_t<alpaka::blas::detail::unannotated_t<ALPAKA_TYPEOF(result)>>>)
     {
         using XValue = internal::Value_t<ALPAKA_TYPEOF(x)>;
         using YValue = internal::Value_t<ALPAKA_TYPEOF(y)>;
         using ResultValue = internal::Value_t<ALPAKA_TYPEOF(result)>;
-        static_assert(std::same_as<XValue, YValue>, "dotc requires x and y to have the same element type.");
+        // Routine-local unqualified scalar. ``Value_t`` is cv-preserving so read-only input views (``MdSpan<T
+        // const>``) compare equal with writable ones, while mismatched element types (``x<float>, y<double>``) are
+        // still rejected below.
+        using Scalar = std::remove_cv_t<XValue>;
         static_assert(
-            std::same_as<XValue, ResultValue>,
+            std::same_as<Scalar, std::remove_cv_t<YValue>>,
+            "dotc requires x and y to have the same element type.");
+        static_assert(
+            std::same_as<Scalar, std::remove_cv_t<ResultValue>>,
             "dotc requires result to have the same element type as x and y.");
-        internal::validateScalarSupport<XValue>();
+        internal::validateScalarSupport<Scalar>();
         internal::validateWritable<ALPAKA_TYPEOF(result)>();
         internal::validateSameVectorExtent(x, y, "dotc");
         internal::validateScalarResult(x, result, "dotc");

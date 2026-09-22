@@ -421,7 +421,7 @@ namespace alpaka::blas::internal
         auto& result,
         [[maybe_unused]] Options options)
     {
-        using T = Value_t<ALPAKA_TYPEOF(x)>;
+        using Scalar = std::remove_cv_t<Value_t<ALPAKA_TYPEOF(x)>>;
         auto const xd = makeVectorDescriptor(x);
         auto const yd = makeVectorDescriptor(y);
         auto const nInt = checkedCast<rocblas_int>(xd.n, "dotc n");
@@ -433,8 +433,8 @@ namespace alpaka::blas::internal
             {
                 RocblasHandle rocblas{nativeStream};
                 auto handle = rocblas.handle;
-                setPointerMode<T>(handle);
-                if constexpr(std::same_as<T, float>)
+                setPointerMode<Scalar>(handle);
+                if constexpr(std::same_as<Scalar, float>)
                     check(
                         rocblas_sdot(
                             handle,
@@ -445,7 +445,7 @@ namespace alpaka::blas::internal
                             incyInt,
                             resultPtr),
                         "rocblas_sdot");
-                else if constexpr(std::same_as<T, double>)
+                else if constexpr(std::same_as<Scalar, double>)
                     check(
                         rocblas_ddot(
                             handle,
@@ -456,7 +456,7 @@ namespace alpaka::blas::internal
                             incyInt,
                             resultPtr),
                         "rocblas_ddot");
-                else if constexpr(std::same_as<T, alpaka::math::Complex<float>>)
+                else if constexpr(std::same_as<Scalar, alpaka::math::Complex<float>>)
                     check(
                         rocblas_cdotc(
                             handle,

@@ -453,7 +453,7 @@ namespace alpaka::blas::internal
         auto& result,
         Options options)
     {
-        using T = Value_t<ALPAKA_TYPEOF(x)>;
+        using Scalar = std::remove_cv_t<Value_t<ALPAKA_TYPEOF(x)>>;
         auto const xd = makeVectorDescriptor(x);
         auto const yd = makeVectorDescriptor(y);
         auto const nInt = checkedCast<int>(xd.n, "dotc n");
@@ -465,9 +465,9 @@ namespace alpaka::blas::internal
             {
                 CublasHandle cublas{nativeStream};
                 auto handle = cublas.handle;
-                setMathMode<T>(handle, options);
+                setMathMode<Scalar>(handle, options);
                 check(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_DEVICE), "cublasSetPointerMode");
-                if constexpr(std::same_as<T, float>)
+                if constexpr(std::same_as<Scalar, float>)
                     check(
                         cublasSdot(
                             handle,
@@ -478,7 +478,7 @@ namespace alpaka::blas::internal
                             incyInt,
                             resultPtr),
                         "cublasSdot");
-                else if constexpr(std::same_as<T, double>)
+                else if constexpr(std::same_as<Scalar, double>)
                     check(
                         cublasDdot(
                             handle,
@@ -489,7 +489,7 @@ namespace alpaka::blas::internal
                             incyInt,
                             resultPtr),
                         "cublasDdot");
-                else if constexpr(std::same_as<T, alpaka::math::Complex<float>>)
+                else if constexpr(std::same_as<Scalar, alpaka::math::Complex<float>>)
                     check(
                         cublasCdotc(
                             handle,
