@@ -691,8 +691,12 @@ namespace alpaka::blas::internal
         auto& C,
         [[maybe_unused]] Options options)
     {
-        using T = Value_t<ALPAKA_TYPEOF(A)>;
+        using T = std::remove_cv_t<Value_t<ALPAKA_TYPEOF(A)>>;
         static_assert(RealScalar<T>, "syrk supports only real scalar types.");
+        // The public syrk entry converts alpha/beta once; the dispatch receives canonical T scalars already and must
+        // not re-cast them (convert-once semantics).
+        static_assert(std::same_as<decltype(alpha), T>, "syrk alpha must arrive as the canonical scalar.");
+        static_assert(std::same_as<decltype(beta), T>, "syrk beta must arrive as the canonical scalar.");
         auto const ad = makeMatrixDescriptor(A);
         auto const cd = makeMatrixDescriptor(C);
         auto const n = ad.transpose == Transpose::none ? ad.rows : ad.cols;
@@ -713,10 +717,10 @@ namespace alpaka::blas::internal
                         op,
                         nInt,
                         kInt,
-                        static_cast<float>(alpha),
+                        alpha,
                         static_cast<float const*>(ad.constPtr),
                         adLd,
-                        static_cast<float>(beta),
+                        beta,
                         static_cast<float*>(cd.mutPtr),
                         cdLd);
                 else
@@ -726,10 +730,10 @@ namespace alpaka::blas::internal
                         op,
                         nInt,
                         kInt,
-                        static_cast<double>(alpha),
+                        alpha,
                         static_cast<double const*>(ad.constPtr),
                         adLd,
-                        static_cast<double>(beta),
+                        beta,
                         static_cast<double*>(cd.mutPtr),
                         cdLd);
             });

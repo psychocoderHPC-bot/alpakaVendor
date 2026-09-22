@@ -22,17 +22,25 @@ namespace alpaka::blas::internal
     using alpaka::blas::detail::getTriangle;
     using alpaka::blas::detail::getView;
 
+    /** Scalar type of a BLAS operand view.
+     *
+     * ``Value_t`` preserves cv-qualifiers: a const-element input view keeps its const element type so callers can
+     * distinguish read-only operands from writable ones. Routines that dispatch on the scalar type derive a
+     * routine-local unqualified scalar with ``std::remove_cv_t<Value_t<T>>``; the writable-operand guard
+     * ``validateWritable()`` rejects a const-element view on an operand that is written in place.
+     */
     template<typename T>
-    using Value_t = std::remove_cv_t<alpaka::GetValueType_t<detail::unannotated_t<T>>>;
+    using Value_t = alpaka::GetValueType_t<detail::unannotated_t<T>>;
 
     template<typename T>
     constexpr bool isSupportedScalar_v = Scalar<Value_t<T>>;
 
     /** Compile-time guard: a BLAS operand that is written in place must be a view with non-const element type.
      *
-     * ``Value_t`` intentionally strips cv-qualifiers so backend dispatch selects the scalar branch for read-only
-     * input views. Without this guard, a const-element view passed to a writable operand would otherwise silently
-     * drop the constness and the backend would write through a pointer the caller declared read-only (UB).
+     * ``Value_t`` preserves cv-qualifiers, so backend dispatch derives its unqualified scalar locally with
+     * ``std::remove_cv_t<Value_t<T>>``. Without this guard, a const-element view passed to a writable operand would
+     * select the same backend branch and the backend would write through a pointer the caller declared read-only
+     * (UB).
      */
     template<typename T>
     constexpr void validateWritable()
@@ -296,7 +304,7 @@ namespace alpaka::blas::internal
     inline void validateSyrk(T_A const& A, T_C const& C)
     {
         static_assert(
-            std::same_as<Value_t<T_A>, Value_t<T_C>>,
+            std::same_as<std::remove_cv_t<Value_t<T_A>>, std::remove_cv_t<Value_t<T_C>>>,
             "syrk requires A and C to have the same element type.");
         static_assert(
             !std::is_const_v<alpaka::GetValueType_t<detail::unannotated_t<T_C>>>,

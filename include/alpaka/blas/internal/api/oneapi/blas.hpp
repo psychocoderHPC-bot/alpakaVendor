@@ -575,8 +575,12 @@ namespace alpaka::blas::internal
         auto& C,
         Options options)
     {
-        using T = Value_t<ALPAKA_TYPEOF(A)>;
+        using T = std::remove_cv_t<Value_t<ALPAKA_TYPEOF(A)>>;
         static_assert(RealScalar<T>, "syrk supports only real scalar types.");
+        // The public syrk entry converts alpha/beta once; the dispatch receives canonical T scalars already and must
+        // not re-cast them (convert-once semantics).
+        static_assert(std::same_as<decltype(alpha), T>, "syrk alpha must arrive as the canonical scalar.");
+        static_assert(std::same_as<decltype(beta), T>, "syrk beta must arrive as the canonical scalar.");
         auto const ad = makeMatrixDescriptor(A);
         auto const cd = makeMatrixDescriptor(C);
         auto const n = ad.transpose == Transpose::none ? ad.rows : ad.cols;
@@ -584,8 +588,10 @@ namespace alpaka::blas::internal
         // For real operands conjugateTransposed is the identity-conjugated transpose: normalize to transposed.
         auto const op
             = ad.transpose == Transpose::none ? oneapi::mkl::transpose::nontrans : oneapi::mkl::transpose::trans;
-        auto alphaT = toOneMklScalar<T>(alpha);
-        auto betaT = toOneMklScalar<T>(beta);
+        // oneMKL constructs its value_or_pointer from the scalar by value; no conversion is needed because alpha/beta
+        // already have the canonical element type T.
+        auto const alphaT = alpha;
+        auto const betaT = beta;
         auto const computeMode = oneMklComputeModeFor<T>(options);
         queue.enqueueNativeFn(
             [=](sycl::queue q) -> sycl::event

@@ -326,6 +326,9 @@ namespace alpaka::blas::onHost
      * selection; the opposite triangle and any padding are left unchanged. Transpose and unit-diagonal annotations on
      * ``C`` are rejected.
      *
+     * The coefficients are converted exactly once at this public entry into the canonical scalar type of the
+     * operands; the backends receive the already-converted values and never re-cast them.
+     *
      * Degenerate cases are handled without touching the operands that must not be read:
      * - ``n == 0`` is a no-op and no data is accessed at all.
      * - ``k == 0`` or ``alpha == 0`` produce ``beta * C`` on the selected triangle; ``A`` is never read.
@@ -348,9 +351,17 @@ namespace alpaka::blas::onHost
         auto beta,
         concepts::MatrixView auto& C,
         Options options = {})
+        requires(
+            RealScalar<std::remove_cv_t<internal::Value_t<ALPAKA_TYPEOF(A)>>>
+            && std::same_as<
+                std::remove_cv_t<internal::Value_t<ALPAKA_TYPEOF(A)>>,
+                std::remove_cv_t<internal::Value_t<ALPAKA_TYPEOF(C)>>>
+            && RealScalar<std::remove_cv_t<decltype(alpha)>> && RealScalar<std::remove_cv_t<decltype(beta)>>
+            && !std::is_const_v<alpaka::GetValueType_t<alpaka::blas::detail::unannotated_t<ALPAKA_TYPEOF(C)>>>)
     {
         using T = internal::Value_t<ALPAKA_TYPEOF(A)>;
-        static_assert(RealScalar<T>, "syrk supports only real scalar types.");
+        using Scalar = std::remove_cv_t<T>;
+        static_assert(RealScalar<Scalar>, "syrk supports only real scalar types.");
         internal::validateWritable<ALPAKA_TYPEOF(C)>();
         internal::validateSyrk(A, C);
         auto const ad = internal::makeMatrixDescriptor(A);
@@ -358,12 +369,16 @@ namespace alpaka::blas::onHost
         auto const k = internal::getTranspose(A) == Transpose::none ? ad.cols : ad.rows;
         if(n == 0)
             return; // nothing to do, no data access.
-        if(k == 0 || static_cast<T>(alpha) == T{0})
+        // Convert the scalar coefficients exactly once at the public entry; the backends receive already-converted
+        // canonical Scalar values and never re-cast them.
+        Scalar const alphaScalar = static_cast<Scalar>(alpha);
+        Scalar const betaScalar = static_cast<Scalar>(beta);
+        if(k == 0 || alphaScalar == Scalar{0})
         {
             // The result is beta * C on the selected triangle and A must not be read.
-            internal::enqueueScaleTriangle(queue, C, beta);
+            internal::enqueueScaleTriangle(queue, C, betaScalar);
             return;
         }
-        internal::SyrkFn::call(queue, alpha, A, beta, C, options);
+        internal::SyrkFn::call(queue, alphaScalar, A, betaScalar, C, options);
     }
 } // namespace alpaka::blas::onHost
