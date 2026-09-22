@@ -1023,27 +1023,102 @@ TEMPLATE_LIST_TEST_CASE(
             Astorage.data(),
             alpaka::Vec<uint32_t, 2u>{n, k},
             alpaka::Vec<std::size_t, 2u>{static_cast<std::size_t>(n) * sizeof(Scalar), sizeof(Scalar)});
-
         // Deliberately fill none of the oversized views: the enormous pitch means any element write would overflow
         // the tiny backing storage. The rejection must come from metadata alone, before any data access.
+        auto upperC = alpaka::blas::upper(C);
+        auto upperCbig = alpaka::blas::upper(Cbig);
+        auto upperCnormal = alpaka::blas::upper(Cnormal);
+        // Backend-generic guards of the degenerate triangle-scale path (enqueueScaleTriangle): they run for every
+        // backend including oneAPI, so they are tested outside the !OneApi exclusion below.
+        //
+        // Scale-path ldc rejection: an oversized C leading dimension must be rejected by the scale path itself when
+        // the degenerate branch bypasses the vendor dispatch.
+        // beta == 1 is a true no-op and must not touch any metadata, so it is accepted even for the oversized-C view.
+        alpaka::blas::onHost::herk(queue, 0.0f, Anormal, 1.0f, upperCbig);
+        alpaka::onHost::wait(queue);
+        CHECK_THROWS_AS(alpaka::blas::onHost::herk(queue, 0.0f, Anormal, 2.0f, upperCbig), std::invalid_argument);
+        // Scale-path n>uint32-max guard: a degenerate (k==0) herk whose C claims more than uint32 rows must be
+        // rejected before any kernel is enqueued. Metadata only -- a tiny backing storage is used. C's pitch must
+        // itself encode the huge row count so the shape validation passes and only the scale path's n>uint32-max
+        // guard rejects the call.
+        {
+            auto AstorageN = alpaka::onHost::allocUnified<Scalar>(device, 16u);
+            auto CstorageN = alpaka::onHost::allocUnified<Scalar>(device, 16u);
+            constexpr auto hugeN = static_cast<std::size_t>(std::numeric_limits<uint32_t>::max()) + 2u;
+            // k == 0 forces the degenerate scale path; alpha and beta are irrelevant to the n>uint32-max guard. A is
+            // never read, so its row pitch is arbitrary.
+            auto AhugeN = alpaka::makeMdSpan(
+                AstorageN.data(),
+                alpaka::Vec<std::size_t, 2u>{hugeN, std::size_t{0u}},
+                alpaka::Vec<std::size_t, 2u>{std::size_t{0u}, sizeof(Scalar)});
+            auto ChugeN = alpaka::makeMdSpan(
+                CstorageN.data(),
+                alpaka::Vec<std::size_t, 2u>{hugeN, hugeN},
+                alpaka::Vec<std::size_t, 2u>{hugeN * sizeof(Scalar), sizeof(Scalar)});
+            // k==0 degenerates to the scale kernel; with beta != 1 the n>uint32-max guard must throw.
+            auto upperChugeN = alpaka::blas::upper(ChugeN);
+            CHECK_THROWS_AS(alpaka::blas::onHost::herk(queue, 1.0f, AhugeN, 2.0f, upperChugeN), std::invalid_argument);
+        }
         if constexpr(!std::same_as<ALPAKA_TYPEOF(device.getApi()), alpaka::api::OneApi>)
         {
-            auto upperC = alpaka::blas::upper(C);
             CHECK_THROWS_AS(alpaka::blas::onHost::herk(queue, 1.0f, A, 1.0f, upperC), std::invalid_argument);
             // C-ld only oversized: the A descriptor is well-formed, C's cdLd must still be rejected.
-            auto upperCbig = alpaka::blas::upper(Cbig);
             CHECK_THROWS_AS(alpaka::blas::onHost::herk(queue, 1.0f, A, 1.0f, upperCbig), std::invalid_argument);
             // Degenerate branch (k==0/alpha==0) bypasses the vendor dispatch, so an oversized C ld must be rejected
             // by the scale path itself. An oversized A ld is harmless there (A is never read) and must be accepted
-            // while C is well-formed -- verified by the succeeding calls below. beta == 1 is a true no-op and must
-            // not touch any metadata, so it is accepted even for the oversized-C view.
-            alpaka::blas::onHost::herk(queue, 0.0f, Anormal, 1.0f, upperCbig);
-            alpaka::onHost::wait(queue);
-            CHECK_THROWS_AS(alpaka::blas::onHost::herk(queue, 0.0f, Anormal, 2.0f, upperCbig), std::invalid_argument);
+            // while C is well-formed -- verified by the succeeding calls below.
             // Oversized A ld but well-formed C: accepted in the degenerate branch (A untouched), and a non-degenerate
             // run proceeds far enough to reject via the A dispatch checkedCast.
-            auto upperCnormal = alpaka::blas::upper(Cnormal);
             CHECK_THROWS_AS(alpaka::blas::onHost::herk(queue, 1.0f, A, 1.0f, upperCnormal), std::invalid_argument);
+            // Metadata-only oversized n and k: the vendor int parameters overflow, so the checkedCast<int>
+            // in the real dispatch rejects before any data access. Claimed extents must pass the int64 descriptor
+            // and the shape validation, then fail checkedCast<int>.
+            {
+                // n > INT_MAX (2^31-1), k == 3. The claimed extents and row pitch must be internally consistent so
+                // the shape validation passes; only the dispatch's checkedCast<int>(n) rejects the call.
+                constexpr auto hugeN = static_cast<std::size_t>(std::numeric_limits<int>::max()) + 1u;
+                auto AstorageN = alpaka::onHost::allocUnified<Scalar>(device, 16u);
+                auto CstorageN = alpaka::onHost::allocUnified<Scalar>(device, 16u);
+                auto AhugeN = alpaka::makeMdSpan(
+                    AstorageN.data(),
+                    alpaka::Vec<std::size_t, 2u>{hugeN, static_cast<std::size_t>(k)},
+                    alpaka::Vec<std::size_t, 2u>{hugeN * sizeof(Scalar), sizeof(Scalar)});
+                auto ChugeN = alpaka::makeMdSpan(
+                    CstorageN.data(),
+                    alpaka::Vec<std::size_t, 2u>{hugeN, hugeN},
+                    alpaka::Vec<std::size_t, 2u>{hugeN * sizeof(Scalar), sizeof(Scalar)});
+                auto upperChugeN = alpaka::blas::upper(ChugeN);
+                CHECK_THROWS_AS(
+                    alpaka::blas::onHost::herk(queue, 1.0f, AhugeN, 1.0f, upperChugeN),
+                    std::invalid_argument);
+                // k > INT_MAX, n == 3. op(A) is n x k so C stays 3x3. A's row pitch encodes the hugek columns.
+                constexpr auto hugeK = static_cast<std::size_t>(std::numeric_limits<int>::max()) + 1u;
+                auto AstorageK = alpaka::onHost::allocUnified<Scalar>(device, 16u);
+                auto AhugeK = alpaka::makeMdSpan(
+                    AstorageK.data(),
+                    alpaka::Vec<std::size_t, 2u>{static_cast<std::size_t>(n), hugeK},
+                    alpaka::Vec<std::size_t, 2u>{hugeK * sizeof(Scalar), sizeof(Scalar)});
+                auto Ch = alpaka::onHost::allocUnified<Scalar>(device, 16u);
+                auto CnormalK = alpaka::makeMdSpan(
+                    Ch.data(),
+                    alpaka::Vec<std::size_t, 2u>{static_cast<std::size_t>(n), static_cast<std::size_t>(n)},
+                    alpaka::Vec<std::size_t, 2u>{static_cast<std::size_t>(n) * sizeof(Scalar), sizeof(Scalar)});
+                auto upperCnormalK = alpaka::blas::upper(CnormalK);
+                CHECK_THROWS_AS(
+                    alpaka::blas::onHost::herk(queue, 1.0f, AhugeK, 1.0f, upperCnormalK),
+                    std::invalid_argument);
+            }
+            // Queue sanity after the metadata rejections: nothing may have been enqueued, the queue must still
+            // accept and run a perfectly valid herk.
+            auto sanityA = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{n, k});
+            auto sanityC = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{n, n});
+            fillMatrixComplex(sanityA, n, k);
+            fillMatrixComplex(sanityC, n, n);
+            auto upperSanityC = alpaka::blas::upper(sanityC);
+            alpaka::blas::onHost::herk(queue, 1.0f, sanityA, 0.5f, upperSanityC);
+            alpaka::onHost::wait(queue);
+            // The valid update ran: the diagonal is real for the first element.
+            CHECK(sanityC[alpaka::Vec<uint32_t, 2u>{0u, 0u}].imag() == Catch::Approx(0.0f).margin(1e-5f));
         }
     }
 }
