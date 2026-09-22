@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <alpakaTest/deviceHelper.hpp>
+#include <limits>
 #include <utility>
 #include <vector>
 
@@ -153,6 +154,8 @@ TEMPLATE_LIST_TEST_CASE("BLAS level1 dotc conjugated dot product", "[integr][bla
         // Read-only inputs: dotc must accept vector views with const element type for every supported scalar. The
         // descriptor scalar type is cv-stripped centrally, so a `MdSpan<const T>` selects the same backend branch as
         // the writable `MdSpan<T>` (regression guard for issue 8's common-element-type / cv-qualified dispatch).
+        // The const view is created over unified memory, so the same block also runs for the CUDA, HIP and oneAPI
+        // device APIs where the data() pointer is a backend-specific unified (managed) pointer.
         {
             auto runReadOnly = [&]<typename T>()
             {
@@ -162,24 +165,19 @@ TEMPLATE_LIST_TEST_CASE("BLAS level1 dotc conjugated dot product", "[integr][bla
                 auto yb = alpaka::onHost::allocUnified<T>(device, n);
                 fillVector(xb.data(), n);
                 fillVector(yb.data(), n);
-                if constexpr(std::same_as<ALPAKA_TYPEOF(device.getApi()), alpaka::api::Host>)
+                auto xConst = alpaka::makeMdSpan(static_cast<T const*>(xb.data()), alpaka::Vec<std::size_t, 1u>{n});
+                auto yConst = alpaka::makeMdSpan(static_cast<T const*>(yb.data()), alpaka::Vec<std::size_t, 1u>{n});
+                auto dotcRO = alpaka::onHost::allocUnified<T>(device, 1u);
+                alpaka::blas::onHost::dotc(queue, xConst, yConst, dotcRO, options);
+                alpaka::onHost::wait(queue);
+                if constexpr(alpaka::blas::ComplexScalar<T>)
                 {
-                    auto xConst
-                        = alpaka::makeMdSpan(static_cast<T const*>(xb.data()), alpaka::Vec<std::size_t, 1u>{n});
-                    auto yConst
-                        = alpaka::makeMdSpan(static_cast<T const*>(yb.data()), alpaka::Vec<std::size_t, 1u>{n});
-                    auto dotcRO = alpaka::onHost::allocUnified<T>(device, 1u);
-                    alpaka::blas::onHost::dotc(queue, xConst, yConst, dotcRO, options);
-                    alpaka::onHost::wait(queue);
-                    if constexpr(alpaka::blas::ComplexScalar<T>)
-                    {
-                        auto const expected = blas::dotcRef(xb.data(), yb.data(), n);
-                        CHECK(dotcRO.data()[0].real() == Catch::Approx(expected.real()).epsilon(1e-4));
-                        CHECK(dotcRO.data()[0].imag() == Catch::Approx(expected.imag()).epsilon(1e-4));
-                    }
-                    else
-                        CHECK(dotcRO.data()[0] == Catch::Approx(blas::dotcRef(xb.data(), yb.data(), n)).epsilon(1e-4));
+                    auto const expected = blas::dotcRef(xb.data(), yb.data(), n);
+                    CHECK(dotcRO.data()[0].real() == Catch::Approx(expected.real()).epsilon(1e-4));
+                    CHECK(dotcRO.data()[0].imag() == Catch::Approx(expected.imag()).epsilon(1e-4));
                 }
+                else
+                    CHECK(dotcRO.data()[0] == Catch::Approx(blas::dotcRef(xb.data(), yb.data(), n)).epsilon(1e-4));
             };
             runReadOnly.template operator()<float>();
             runReadOnly.template operator()<double>();
@@ -262,5 +260,39 @@ TEMPLATE_LIST_TEST_CASE("BLAS level1 dotc conjugated dot product", "[integr][bla
         CHECK(dotcA.data()[0].imag() == Catch::Approx(6.0).epsilon(1e-12));
         CHECK(dotA.data()[0].real() == Catch::Approx(5.0).epsilon(1e-12));
         CHECK(dotA.data()[0].imag() == Catch::Approx(16.0).epsilon(1e-12));
+    }
+}
+
+TEMPLATE_LIST_TEST_CASE("BLAS dotc oversized n rejected by checkedCast", "[integr][blas][level1][dotc]", TestBackends)
+{
+    auto deviceExec = getDeviceExecutorOrSkipTest(TestType::makeDict());
+    auto device = getDevice(deviceExec);
+    if constexpr(!isBlasBackendEnabledForDevice(device))
+    {
+        SKIP("No BLAS backend enabled for this alpaka API.");
+    }
+    else
+    {
+        auto queue = device.makeQueue();
+        using Scalar = float;
+        // An extent larger than the 32-bit vendor int parameters (host/cuda) and the 32-bit rocblas_int (hip) used by
+        // the dotc dispatches. The rejection must come from the metadata alone, before enqueue and without any data
+        // access: the backing storage is a single scalar so any element access at that extent would overflow.
+        constexpr std::size_t hugeN = static_cast<std::size_t>(std::numeric_limits<uint32_t>::max()) + 2u;
+        auto xstorage = alpaka::onHost::allocUnified<Scalar>(device, 1u);
+        auto ystorage = alpaka::onHost::allocUnified<Scalar>(device, 1u);
+        auto dotcResult = alpaka::onHost::allocUnified<Scalar>(device, 1u);
+        auto xbig = alpaka::makeMdSpan(xstorage.data(), alpaka::Vec<std::size_t, 1u>{hugeN});
+        auto ybig = alpaka::makeMdSpan(ystorage.data(), alpaka::Vec<std::size_t, 1u>{hugeN});
+        if constexpr(!std::same_as<ALPAKA_TYPEOF(device.getApi()), alpaka::api::OneApi>)
+        {
+            CHECK_THROWS_AS(alpaka::blas::onHost::dotc(queue, xbig, ybig, dotcResult), std::invalid_argument);
+        }
+        else
+        {
+            // oneMKL accepts 64-bit descriptor integers, so the same oversized extent is representable there and no
+            // checkedCast applies. The call is intentionally not enqueued here: executing a dotc over an absurd
+            // number of elements backed by a single-element buffer would read out of bounds.
+        }
     }
 }
