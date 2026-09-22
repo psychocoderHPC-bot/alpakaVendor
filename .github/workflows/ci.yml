@@ -80,6 +80,8 @@ jobs:
               env: { APCI_DEVICE_COMPILER: nvcc@13.2, APCI_CMAKE: 3.28.3, APCI_RUN_CTEST: OFF } }
           - { compiler: nvcc, version: "", cuda: "13.3", hip: "no", container: "nvidia/cuda:13.3.0-devel-ubuntu24.04",
               env: { APCI_DEVICE_COMPILER: nvcc@13.3, APCI_CMAKE: 3.28.3, APCI_RUN_CTEST: OFF } }
+          - { compiler: nvcc, version: "", cuda: "13.4", hip: "no", container: "nvidia/cuda:13.4.1-devel-ubuntu24.04",
+              env: { APCI_DEVICE_COMPILER: nvcc@13.4, APCI_CMAKE: 3.28.3, APCI_RUN_CTEST: OFF } }
           # Clang-CUDA (device compile with clang)
           - { compiler: clang, version: "20", cuda: "12.8", hip: "no", container: "nvidia/cuda:12.8.1-devel-ubuntu24.04",
               env: { APCI_DEVICE_COMPILER: clang@20, APCI_CMAKE: 3.28.3, APCI_RUN_CTEST: OFF } }
