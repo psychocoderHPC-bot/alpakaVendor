@@ -376,16 +376,19 @@ namespace alpaka::blas::internal
         using T = Value_t<ALPAKA_TYPEOF(x)>;
         auto const xd = makeVectorDescriptor(x);
         auto const yd = makeVectorDescriptor(y);
+        auto const nInt = checkedCast<int>(xd.n, "dotc n");
+        auto const incxInt = checkedCast<int>(xd.inc, "dotc incx");
+        auto const incyInt = checkedCast<int>(yd.inc, "dotc incy");
         auto* resultPtr = alpaka::onHost::data(getView(result));
         queue.enqueueNativeFn(
             [=](auto)
             {
                 resultPtr[0] = OpenBlas<T>::dotc(
-                    int(xd.n),
+                    nInt,
                     static_cast<T const*>(xd.constPtr),
-                    int(xd.inc),
+                    incxInt,
                     static_cast<T const*>(yd.constPtr),
-                    int(yd.inc));
+                    incyInt);
             });
     }
 

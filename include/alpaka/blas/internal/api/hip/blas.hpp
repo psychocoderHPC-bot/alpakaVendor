@@ -424,6 +424,9 @@ namespace alpaka::blas::internal
         using T = Value_t<ALPAKA_TYPEOF(x)>;
         auto const xd = makeVectorDescriptor(x);
         auto const yd = makeVectorDescriptor(y);
+        auto const nInt = checkedCast<rocblas_int>(xd.n, "dotc n");
+        auto const incxInt = checkedCast<rocblas_int>(xd.inc, "dotc incx");
+        auto const incyInt = checkedCast<rocblas_int>(yd.inc, "dotc incy");
         auto* resultPtr = alpaka::onHost::data(getView(result));
         queue.enqueueNativeFn(
             [=](hipStream_t nativeStream)
@@ -435,44 +438,44 @@ namespace alpaka::blas::internal
                     check(
                         rocblas_sdot(
                             handle,
-                            xd.n,
+                            nInt,
                             static_cast<float const*>(xd.constPtr),
-                            xd.inc,
+                            incxInt,
                             static_cast<float const*>(yd.constPtr),
-                            yd.inc,
+                            incyInt,
                             resultPtr),
                         "rocblas_sdot");
                 else if constexpr(std::same_as<T, double>)
                     check(
                         rocblas_ddot(
                             handle,
-                            xd.n,
+                            nInt,
                             static_cast<double const*>(xd.constPtr),
-                            xd.inc,
+                            incxInt,
                             static_cast<double const*>(yd.constPtr),
-                            yd.inc,
+                            incyInt,
                             resultPtr),
                         "rocblas_ddot");
                 else if constexpr(std::same_as<T, alpaka::math::Complex<float>>)
                     check(
                         rocblas_cdotc(
                             handle,
-                            xd.n,
+                            nInt,
                             reinterpret_cast<rocblas_float_complex const*>(xd.constPtr),
-                            xd.inc,
+                            incxInt,
                             reinterpret_cast<rocblas_float_complex const*>(yd.constPtr),
-                            yd.inc,
+                            incyInt,
                             reinterpret_cast<rocblas_float_complex*>(resultPtr)),
                         "rocblas_cdotc");
                 else
                     check(
                         rocblas_zdotc(
                             handle,
-                            xd.n,
+                            nInt,
                             reinterpret_cast<rocblas_double_complex const*>(xd.constPtr),
-                            xd.inc,
+                            incxInt,
                             reinterpret_cast<rocblas_double_complex const*>(yd.constPtr),
-                            yd.inc,
+                            incyInt,
                             reinterpret_cast<rocblas_double_complex*>(resultPtr)),
                         "rocblas_zdotc");
             });

@@ -456,6 +456,9 @@ namespace alpaka::blas::internal
         using T = Value_t<ALPAKA_TYPEOF(x)>;
         auto const xd = makeVectorDescriptor(x);
         auto const yd = makeVectorDescriptor(y);
+        auto const nInt = checkedCast<int>(xd.n, "dotc n");
+        auto const incxInt = checkedCast<int>(xd.inc, "dotc incx");
+        auto const incyInt = checkedCast<int>(yd.inc, "dotc incy");
         auto* resultPtr = alpaka::onHost::data(getView(result));
         queue.enqueueNativeFn(
             [=](cudaStream_t nativeStream)
@@ -468,44 +471,44 @@ namespace alpaka::blas::internal
                     check(
                         cublasSdot(
                             handle,
-                            int(xd.n),
+                            nInt,
                             static_cast<float const*>(xd.constPtr),
-                            int(xd.inc),
+                            incxInt,
                             static_cast<float const*>(yd.constPtr),
-                            int(yd.inc),
+                            incyInt,
                             resultPtr),
                         "cublasSdot");
                 else if constexpr(std::same_as<T, double>)
                     check(
                         cublasDdot(
                             handle,
-                            int(xd.n),
+                            nInt,
                             static_cast<double const*>(xd.constPtr),
-                            int(xd.inc),
+                            incxInt,
                             static_cast<double const*>(yd.constPtr),
-                            int(yd.inc),
+                            incyInt,
                             resultPtr),
                         "cublasDdot");
                 else if constexpr(std::same_as<T, alpaka::math::Complex<float>>)
                     check(
                         cublasCdotc(
                             handle,
-                            int(xd.n),
+                            nInt,
                             reinterpret_cast<cuComplex const*>(xd.constPtr),
-                            int(xd.inc),
+                            incxInt,
                             reinterpret_cast<cuComplex const*>(yd.constPtr),
-                            int(yd.inc),
+                            incyInt,
                             reinterpret_cast<cuComplex*>(resultPtr)),
                         "cublasCdotc");
                 else
                     check(
                         cublasZdotc(
                             handle,
-                            int(xd.n),
+                            nInt,
                             reinterpret_cast<cuDoubleComplex const*>(xd.constPtr),
-                            int(xd.inc),
+                            incxInt,
                             reinterpret_cast<cuDoubleComplex const*>(yd.constPtr),
-                            int(yd.inc),
+                            incyInt,
                             reinterpret_cast<cuDoubleComplex*>(resultPtr)),
                         "cublasZdotc");
             });
