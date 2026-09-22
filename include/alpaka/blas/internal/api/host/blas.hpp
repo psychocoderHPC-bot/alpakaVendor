@@ -695,9 +695,14 @@ namespace alpaka::blas::internal
         static_assert(ComplexScalar<T>, "herk supports only complex scalar types.");
         auto const ad = makeMatrixDescriptor(A);
         auto const cd = makeMatrixDescriptor(C);
-        // Logical (post-op) extents: op(A) is n x k.
+        // Logical (post-op) extents: op(A) is n x k. The public wrapper intercepts the degenerate n == 0 / k == 0
+        // cases before dispatch, so this routine is only called for a well-defined update (n, k > 0).
         auto const n = ad.transpose == Transpose::none ? ad.rows : ad.cols;
         auto const k = ad.transpose == Transpose::none ? ad.cols : ad.rows;
+        auto const nInt = checkedCast<int>(n, "herk n");
+        auto const kInt = checkedCast<int>(k, "herk k");
+        auto const adLd = checkedCast<int>(ad.ld, "herk A ld");
+        auto const cdLd = checkedCast<int>(cd.ld, "herk C ld");
         queue.enqueueNativeFn(
             [=](auto)
             {
@@ -708,27 +713,27 @@ namespace alpaka::blas::internal
                         CblasRowMajor,
                         toCblasUplo(cd.triangle),
                         toCblasTranspose(ad.transpose),
-                        int(n),
-                        int(k),
+                        nInt,
+                        kInt,
                         static_cast<float>(alpha),
                         static_cast<T const*>(ad.constPtr),
-                        int(ad.ld),
+                        adLd,
                         static_cast<float>(beta),
                         static_cast<T*>(cd.mutPtr),
-                        int(cd.ld));
+                        cdLd);
                 else
                     cblas_zherk(
                         CblasRowMajor,
                         toCblasUplo(cd.triangle),
                         toCblasTranspose(ad.transpose),
-                        int(n),
-                        int(k),
+                        nInt,
+                        kInt,
                         static_cast<double>(alpha),
                         static_cast<T const*>(ad.constPtr),
-                        int(ad.ld),
+                        adLd,
                         static_cast<double>(beta),
                         static_cast<T*>(cd.mutPtr),
-                        int(cd.ld));
+                        cdLd);
             });
     }
 } // namespace alpaka::blas::internal

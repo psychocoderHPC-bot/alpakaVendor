@@ -960,9 +960,14 @@ namespace alpaka::blas::internal
         static_assert(ComplexScalar<T>, "herk supports only complex scalar types.");
         auto const ad = makeMatrixDescriptor(A);
         auto const cd = makeMatrixDescriptor(C);
-        // Logical (post-op) extents: op(A) is n x k.
+        // Logical (post-op) extents: op(A) is n x k. The public wrapper intercepts the degenerate n == 0 / k == 0
+        // cases before dispatch, so this routine is only called for a well-defined update (n, k > 0).
         auto const n = ad.transpose == Transpose::none ? ad.rows : ad.cols;
         auto const k = ad.transpose == Transpose::none ? ad.cols : ad.rows;
+        auto const nInt = checkedCast<rocblas_int>(n, "herk n");
+        auto const kInt = checkedCast<rocblas_int>(k, "herk k");
+        auto const adLd = checkedCast<rocblas_int>(ad.ld, "herk A ld");
+        auto const cdLd = checkedCast<rocblas_int>(cd.ld, "herk C ld");
         queue.enqueueNativeFn(
             [=](hipStream_t nativeStream)
             {
@@ -985,14 +990,14 @@ namespace alpaka::blas::internal
                             handle,
                             toRocblasFill(colTriangle),
                             colOp,
-                            n,
-                            k,
+                            nInt,
+                            kInt,
                             &alphaT,
                             reinterpret_cast<rocblas_float_complex const*>(ad.constPtr),
-                            ad.ld,
+                            adLd,
                             &betaT,
                             reinterpret_cast<rocblas_float_complex*>(cd.mutPtr),
-                            cd.ld),
+                            cdLd),
                         "rocblas_cherk");
                 else
                     check(
@@ -1000,14 +1005,14 @@ namespace alpaka::blas::internal
                             handle,
                             toRocblasFill(colTriangle),
                             colOp,
-                            n,
-                            k,
+                            nInt,
+                            kInt,
                             &alphaT,
                             reinterpret_cast<rocblas_double_complex const*>(ad.constPtr),
-                            ad.ld,
+                            adLd,
                             &betaT,
                             reinterpret_cast<rocblas_double_complex*>(cd.mutPtr),
-                            cd.ld),
+                            cdLd),
                         "rocblas_zherk");
             });
     }

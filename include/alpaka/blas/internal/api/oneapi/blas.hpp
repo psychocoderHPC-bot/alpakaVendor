@@ -578,14 +578,11 @@ namespace alpaka::blas::internal
         static_assert(ComplexScalar<T>, "herk supports only complex scalar types.");
         auto const ad = makeMatrixDescriptor(A);
         auto const cd = makeMatrixDescriptor(C);
-        // Logical (post-op) extents: op(A) is n x k.
+        // Logical (post-op) extents: op(A) is n x k. The public wrapper intercepts the degenerate n == 0 / k == 0
+        // cases (including the beta scaling semantics) before dispatch, so this routine is only called for a
+        // well-defined update (n, k > 0).
         auto const n = ad.transpose == Transpose::none ? ad.rows : ad.cols;
         auto const k = ad.transpose == Transpose::none ? ad.cols : ad.rows;
-        // oneMKL validates leading dimensions and rejects degenerate empty updates, but the public
-        // contract (matching OpenBLAS CHERK and the integration tests) is a no-op for n=0 or k=0:
-        // nothing is read from or written to C.
-        if(n == 0 || k == 0)
-            return;
         // oneMKL herk expects real scalars (value_or_pointer<Treal>), so use REAL coefficients, not the complex type.
         auto const alphaT = static_cast<Real_t<T>>(alpha);
         auto const betaT = static_cast<Real_t<T>>(beta);
