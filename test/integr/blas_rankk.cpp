@@ -67,8 +67,7 @@ bool isFinite(T value)
 // Whether the public herk entry forms for the given argument types. Expressing the call through a variable-template
 // requires-expression makes the negative cases (unsatisfied constraints) produce `false` instead of a hard error.
 template<typename TQueue, typename TAlpha, typename TViewA, typename TBeta, typename TViewC>
-inline constexpr bool herkCallable = requires(TQueue& queue, TAlpha alpha, TViewA& A, TBeta beta, TViewC& C)
-{
+inline constexpr bool herkCallable = requires(TQueue& queue, TAlpha alpha, TViewA& A, TBeta beta, TViewC& C) {
     alpaka::blas::onHost::herk(queue, alpha, A, beta, C);
 };
 
@@ -494,8 +493,7 @@ TEMPLATE_LIST_TEST_CASE(
                     else if(i == j)
                         // Diagonal stays real: beta scales the real part, the imaginary part is zero.
                         CHECK(
-                            C[alpaka::Vec<uint32_t, 2u>{i, j}]
-                            == Scalar{betaR * before[i * ldC + j].real(), Real{0}});
+                            C[alpaka::Vec<uint32_t, 2u>{i, j}] == Scalar{betaR * before[i * ldC + j].real(), Real{0}});
                     else
                         CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}] == betaR * before[i * ldC + j]);
                 }
@@ -786,8 +784,12 @@ TEMPLATE_LIST_TEST_CASE(
                 for(uint32_t j = i; j < n; ++j)
                 {
                     auto const eps = std::same_as<Real, double> ? 1e-12 : 1e-4;
-                    CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}].real() == Catch::Approx(Cref[i * ldC + j].real()).epsilon(eps));
-                    CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}].imag() == Catch::Approx(Cref[i * ldC + j].imag()).epsilon(eps));
+                    CHECK(
+                        C[alpaka::Vec<uint32_t, 2u>{i, j}].real()
+                        == Catch::Approx(Cref[i * ldC + j].real()).epsilon(eps));
+                    CHECK(
+                        C[alpaka::Vec<uint32_t, 2u>{i, j}].imag()
+                        == Catch::Approx(Cref[i * ldC + j].imag()).epsilon(eps));
                 }
         };
         runCase.template operator()<alpaka::math::Complex<float>>();
@@ -843,26 +845,21 @@ TEMPLATE_LIST_TEST_CASE(
         if constexpr(!std::same_as<ALPAKA_TYPEOF(device.getApi()), alpaka::api::OneApi>)
         {
             auto upperC = alpaka::blas::upper(C);
-            CHECK_THROWS_AS(
-                alpaka::blas::onHost::herk(queue, 1.0f, A, 1.0f, upperC), std::invalid_argument);
+            CHECK_THROWS_AS(alpaka::blas::onHost::herk(queue, 1.0f, A, 1.0f, upperC), std::invalid_argument);
             // C-ld only oversized: the A descriptor is well-formed, C's cdLd must still be rejected.
             auto upperCbig = alpaka::blas::upper(Cbig);
-            CHECK_THROWS_AS(
-                alpaka::blas::onHost::herk(queue, 1.0f, A, 1.0f, upperCbig), std::invalid_argument);
+            CHECK_THROWS_AS(alpaka::blas::onHost::herk(queue, 1.0f, A, 1.0f, upperCbig), std::invalid_argument);
             // Degenerate branch (k==0/alpha==0) bypasses the vendor dispatch, so an oversized C ld must be rejected
             // by the scale path itself. An oversized A ld is harmless there (A is never read) and must be accepted
             // while C is well-formed -- verified by the succeeding calls below. beta == 1 is a true no-op and must
             // not touch any metadata, so it is accepted even for the oversized-C view.
             alpaka::blas::onHost::herk(queue, 0.0f, Anormal, 1.0f, upperCbig);
             alpaka::onHost::wait(queue);
-            CHECK_THROWS_AS(
-                alpaka::blas::onHost::herk(queue, 0.0f, Anormal, 2.0f, upperCbig), std::invalid_argument);
+            CHECK_THROWS_AS(alpaka::blas::onHost::herk(queue, 0.0f, Anormal, 2.0f, upperCbig), std::invalid_argument);
             // Oversized A ld but well-formed C: accepted in the degenerate branch (A untouched), and a non-degenerate
             // run proceeds far enough to reject via the A dispatch checkedCast.
             auto upperCnormal = alpaka::blas::upper(Cnormal);
-            CHECK_THROWS_AS(
-                alpaka::blas::onHost::herk(queue, 1.0f, A, 1.0f, upperCnormal), std::invalid_argument);
+            CHECK_THROWS_AS(alpaka::blas::onHost::herk(queue, 1.0f, A, 1.0f, upperCnormal), std::invalid_argument);
         }
     }
 }
-

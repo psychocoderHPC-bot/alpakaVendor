@@ -349,8 +349,7 @@ namespace alpaka::blas::onHost
         requires(
             ComplexScalar<internal::Value_t<ALPAKA_TYPEOF(A)>>
             && std::same_as<internal::Value_t<ALPAKA_TYPEOF(A)>, internal::Value_t<ALPAKA_TYPEOF(C)>>
-            && RealScalar<std::remove_cv_t<decltype(alpha)>>
-            && RealScalar<std::remove_cv_t<decltype(beta)>>
+            && RealScalar<std::remove_cv_t<decltype(alpha)>> && RealScalar<std::remove_cv_t<decltype(beta)>>
             && !std::is_const_v<alpaka::GetValueType_t<alpaka::blas::detail::unannotated_t<ALPAKA_TYPEOF(C)>>>)
     {
         using T = internal::Value_t<ALPAKA_TYPEOF(A)>;
