@@ -28,19 +28,21 @@ namespace alpaka::blas::internal
         {
             using T = std::remove_cv_t<alpaka::GetValueType_t<T_CView>>;
             auto const nIdx = static_cast<std::uint32_t>(n);
-            for(auto [row, col] : onAcc::makeIdxMap(
-                    acc,
-                    onAcc::worker::threadsInGrid,
-                    IdxRange{alpaka::Vec{std::uint32_t{0u}, std::uint32_t{0u}}, alpaka::Vec{nIdx, nIdx}}))
+            // The index domain covers only the row range. Iterating the full n*n square index domain would overflow
+            // the uint32_t indices for n just above 65535; splitting the work into rows keeps every index below n.
+            for(auto const [row] : onAcc::makeIdxMap(acc, onAcc::worker::threadsInGrid, IdxRange{nIdx}))
             {
-                bool const inTriangle = triangle == Triangle::upper ? col >= row : col <= row;
-                if(!inTriangle)
-                    continue;
-                auto const idx = alpaka::Vec{static_cast<std::size_t>(row), static_cast<std::size_t>(col)};
-                if(beta == T{0})
-                    C[idx] = T{0};
-                else
-                    C[idx] = static_cast<T>(beta * static_cast<T>(C[idx]));
+                // Visit the selected triangle only: upper is (row, col) with row <= col, lower is col <= row.
+                uint32_t const colBegin = triangle == Triangle::upper ? row : 0u;
+                uint32_t const colEnd = triangle == Triangle::upper ? nIdx : row + 1u;
+                for(uint32_t col = colBegin; col < colEnd; ++col)
+                {
+                    auto const idx = alpaka::Vec{static_cast<std::size_t>(row), static_cast<std::size_t>(col)};
+                    if(beta == T{0})
+                        C[idx] = T{0};
+                    else
+                        C[idx] = static_cast<T>(beta * static_cast<T>(C[idx]));
+                }
             }
         }
     };
@@ -60,21 +62,18 @@ namespace alpaka::blas::internal
         std::int64_t const n = cd.rows;
         if(n == 0)
             return;
-        // Reject dimensions/leading dimensions that cannot be represented safely: the grid index domain of the
-        // kernel is uint32_t (n*n must fit), and the row pitch must fit the vendor integer width when the same
-        // problem reaches the vendor syrk paths.
+        // Reject dimensions/leading dimensions that cannot be represented safely. The kernel traverses one row index
+        // per work item, so the row count must fit the (uint32_t) index domain of the alpaka frame specification;
+        // unlike the old n*n square domain this bound holds for any n, no quadratic overflow exists. The row pitch
+        // must also fit the vendor integer width so the degenerate branch stays aligned with the vendor syrk paths.
         if(n > std::numeric_limits<std::uint32_t>::max())
             throw std::invalid_argument("syrk scale: number of rows is too large.");
-        if(n > 65535)
-            throw std::invalid_argument("syrk scale: n*n exceeds the kernel index domain.");
-        auto const nU = static_cast<std::uint32_t>(n);
-        // Keep the degenerate branch's metadata contract aligned with the vendor syrk dispatches: host/cuda/hip take
-        // a 32-bit leading dimension, so an oversized C ld must be rejected here too (the vendor path is bypassed).
         auto const ldChecked = checkedCast<int>(cd.ld, "syrk scale C ld");
-        auto const extent = alpaka::Vec<std::uint32_t, 2u>{nU, nU};
+        auto const nU = static_cast<std::uint32_t>(n);
+        auto const extent = alpaka::Vec<std::uint32_t, 1u>{nU};
         auto const cv = alpaka::makeMdSpan(
             static_cast<T*>(cd.mutPtr),
-            extent,
+            alpaka::Vec<std::uint32_t, 2u>{nU, nU},
             alpaka::Vec<std::size_t, 2u>{static_cast<std::size_t>(ldChecked) * sizeof(T), sizeof(T)});
         auto const frameSpec = alpaka::onHost::getFrameSpec(queue.getDevice(), alpaka::exec::anyExecutor, extent);
         queue.enqueue(
