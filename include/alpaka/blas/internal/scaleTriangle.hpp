@@ -57,24 +57,34 @@ namespace alpaka::blas::internal
      */
     inline void enqueueScaleTriangle(auto& queue, concepts::MatrixView auto& C, auto beta)
     {
-        using T = Value_t<ALPAKA_TYPEOF(C)>;
+        using T = std::remove_cv_t<Value_t<ALPAKA_TYPEOF(C)>>;
         auto const cd = makeMatrixDescriptor(C);
         std::int64_t const n = cd.rows;
         if(n == 0)
             return;
         // Reject dimensions/leading dimensions that cannot be represented safely. The kernel traverses one row index
         // per work item, so the row count must fit the (uint32_t) index domain of the alpaka frame specification;
-        // unlike the old n*n square domain this bound holds for any n, no quadratic overflow exists. The row pitch
-        // must also fit the vendor integer width so the degenerate branch stays aligned with the vendor syrk paths.
+        // unlike the old n*n square domain this bound holds for any n, no quadratic overflow exists. The kernel index
+        // math only ever produces row/col indices below n, so the pitch bytes (size_t) are exact by construction:
+        // cd.ld was derived in makeMatrixDescriptor from the pitch divided by sizeof(T), hence
+        // cd.ld * sizeof(T) <= original pitch <= PTRDIFF_MAX. The row pitch must still fit the vendor integer width so
+        // the degenerate branch stays aligned with the vendor syrk paths: host/cuda/hip narrow to int, while
+        // oneAPI/oneMKL keeps 64-bit leading dimensions (its syrk takes std::int64_t).
         if(n > std::numeric_limits<std::uint32_t>::max())
             throw std::invalid_argument("syrk scale: number of rows is too large.");
-        auto const ldChecked = checkedCast<int>(cd.ld, "syrk scale C ld");
+        std::int64_t const ld = [&]
+        {
+            if constexpr(std::same_as<ALPAKA_TYPEOF(queue.getDevice().getApi()), alpaka::api::OneApi>)
+                return cd.ld; // oneMKL syrk uses std::int64_t dimensions; no narrowing required.
+            else
+                return static_cast<std::int64_t>(checkedCast<int>(cd.ld, "syrk scale C ld"));
+        }();
         auto const nU = static_cast<std::uint32_t>(n);
         auto const extent = alpaka::Vec<std::uint32_t, 1u>{nU};
         auto const cv = alpaka::makeMdSpan(
             static_cast<T*>(cd.mutPtr),
             alpaka::Vec<std::uint32_t, 2u>{nU, nU},
-            alpaka::Vec<std::size_t, 2u>{static_cast<std::size_t>(ldChecked) * sizeof(T), sizeof(T)});
+            alpaka::Vec<std::size_t, 2u>{static_cast<std::size_t>(ld) * sizeof(T), sizeof(T)});
         auto const frameSpec = alpaka::onHost::getFrameSpec(queue.getDevice(), alpaka::exec::anyExecutor, extent);
         queue.enqueue(
             frameSpec,
