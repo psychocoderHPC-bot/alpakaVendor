@@ -85,7 +85,28 @@ In this example:
 - ``lower(triangular)`` says only the lower half matters
 - ``unitDiag(...)`` says the diagonal is implicitly one
 
-Step 6: Strided batched GEMM
+Step 6: Symmetric rank-k update (SYRK)
+--------------------------------------
+
+``syrk`` updates a symmetric matrix from a rank-k product:
+
+``C = alpha * op(A) * op(A)^T + beta * C``
+
+``op(A)`` on ``A`` may be ``transposed(A)`` or ``conjTransposed(A)``. Because conjugation is the identity on real
+values, ``conjTransposed(A)`` is equivalent to ``transposed(A)`` and the wrapper normalizes it to the transposed
+operation for real operands. Real scalar types ``float`` and ``double`` are supported.
+
+The view on ``C`` must declare which triangle is updated:
+
+.. literalinclude:: ../../../doc/code/tutorial_blas.cpp
+   :language: C++
+   :start-after: //! [blas-tutorial-syrk]
+   :end-before: //! [blas-tutorial-syrk]
+
+Only the selected triangle of ``C`` is written; the opposite triangle and any padding are left unchanged. The example
+uses ``upper(C)``, so the diagonal counts as part of the selected triangle and the ``(1, 0)`` entry stays untouched.
+
+Step 7: Strided batched GEMM
 ----------------------------
 
 If your data already lives in a ``[batch, row, column]`` view, ``stridedBatchedGemm`` applies the same matrix product

@@ -316,7 +316,9 @@ namespace alpaka::blas::onHost
      * shape ``n x k`` and ``C`` is ``n x n``.
      *
      * Only real scalar types (``float``, ``double``) are supported. Complex symmetric rank-k is intentionally not
-     * exposed here; the complex Hermitian counterpart is ``herk``.
+     * exposed here; the complex Hermitian rank-k counterpart is the standard BLAS ``herk`` routine (``C =
+     * alpha * op(A) * op(A)^H + beta * C`` with ``op(A)^H`` the conjugate transpose), which is not provided by this
+     * library.
      *
      * ``A`` is a general dense matrix and may be annotated ``transposed(A)`` or ``conjTransposed(A)``. For real
      * operands ``conjTransposed(A)`` is equivalent to ``transposed(A)`` (conjugation is the identity on real types)

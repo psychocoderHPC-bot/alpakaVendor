@@ -20,7 +20,7 @@ What is available today?
 
 - **Level 1:** ``copy``, ``swap``, ``scal``, ``axpy``, ``dot``, ``nrm2``, ``asum``, ``iamax``
 - **Level 2:** ``gemv``
-- **Level 3:** ``gemm``, ``stridedBatchedGemm``, ``trsm``
+- **Level 3:** ``gemm``, ``stridedBatchedGemm``, ``syrk``, ``trsm``
 
 How to read the BLAS views
 --------------------------
@@ -60,6 +60,24 @@ The public helpers let you describe how an existing view should be interpreted:
 These annotations can be stacked. For example, ``unitDiag(lower(A))`` marks a lower-triangular matrix whose diagonal is
 implicitly one, and ``conjTransposed(A)`` asks BLAS to use the Hermitian transpose without creating a temporary copy.
 Complex ``gemv`` with ``conjTransposed(A)`` is currently not available on the CUDA/cuBLAS and HIP/rocBLAS row-major paths.
+
+SYRK: symmetric rank-k update
+-----------------------------
+
+``syrk`` computes the selected triangle of
+
+``C = alpha * A * op(A)^T + beta * C``
+
+with ``op(A)`` the transpose/conjugate-transpose of the stored matrix, and updates only the triangle selected by
+``upper(C)`` or ``lower(C)``. The opposite triangle and any padding are left unchanged.
+
+- Real scalar types ``float`` and ``double`` only.
+- ``A`` may be annotated ``transposed(A)`` or ``conjTransposed(A)``; for real operands ``conjTransposed(A)`` is
+  equivalent to ``transposed(A)`` (conjugation is the identity on real types) and is normalized to the transposed
+  operation.
+- Backends: OpenBLAS/CBLAS host, CUDA/cuBLAS, HIP/rocBLAS, and oneAPI/oneMKL.
+- Row-major handling: the views follow alpaka's memory layout (last index is contiguous), and the wrappers perform the
+  necessary layout translation for the vendor libraries.
 
 Backend notes
 -------------
