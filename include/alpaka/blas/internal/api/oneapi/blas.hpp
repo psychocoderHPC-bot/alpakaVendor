@@ -383,7 +383,12 @@ namespace alpaka::blas::internal
                         handler.depends_on(event);
                         // oneMKL Iamax returns a 0-based index. Convert to the documented 1-based index and
                         // keep 0 for an empty vector (n == 0), matching netlib BLAS.
-                        handler.host_task([=]() { if(xd.n > 0) ++resultPtr[0]; });
+                        handler.host_task(
+                            [=]()
+                            {
+                                if(xd.n > 0)
+                                    ++resultPtr[0];
+                            });
                     });
             });
     }
