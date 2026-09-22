@@ -94,7 +94,8 @@ Step 6: Symmetric rank-k update (SYRK)
 
 ``op(A)`` on ``A`` may be ``transposed(A)`` or ``conjTransposed(A)``. Because conjugation is the identity on real
 values, ``conjTransposed(A)`` is equivalent to ``transposed(A)`` and the wrapper normalizes it to the transposed
-operation for real operands. Real scalar types ``float`` and ``double`` are supported.
+operation for real operands. The second factor is the plain transpose ``op(A)^T``, the real symmetric rank-k form.
+Real scalar types ``float`` and ``double`` are supported.
 
 The view on ``C`` must declare which triangle is updated:
 
