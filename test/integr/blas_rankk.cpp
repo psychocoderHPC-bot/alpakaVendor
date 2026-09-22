@@ -1155,8 +1155,9 @@ TEMPLATE_LIST_TEST_CASE(
         // Scale-path metadata envelope: the degenerate branch is a generic kernel. With 64-bit index math there is
         // no n*n index-domain limit (the kernel traverses one row per work item), so n in (65535, UINT32_MAX] is
         // accepted and only n > UINT32_MAX is rejected (the uint32 index domain of the frame); the C leading
-        // dimension stays 64-bit, aligned with the oneMKL herk int64 dims. An enormously-pitched C is therefore
-        // accepted on the no-op (beta == 1) path without touching any metadata -- the no-op never reads or writes.
+        // dimension is narrowed through the same vendor-int gate as the backend's own herk (int64 on oneMKL,
+        // 32-bit vendor int elsewhere), so an enormously-pitched C is accepted on the no-op (beta == 1) path
+        // without touching any metadata -- the no-op never reads or writes, on any backend.
         alpaka::blas::onHost::herk(queue, 0.0f, Anormal, 1.0f, upperCbig);
         alpaka::onHost::wait(queue);
         // Scale-path n>uint32-max guard: a degenerate (k==0) herk whose C claims more than uint32 rows must be
@@ -1211,8 +1212,21 @@ TEMPLATE_LIST_TEST_CASE(
             // C-ld only oversized: the A descriptor is well-formed, C's cdLd must still be rejected.
             CHECK_THROWS_AS(alpaka::blas::onHost::herk(queue, 1.0f, A, 1.0f, upperCbig), std::invalid_argument);
             // Degenerate branch (k==0/alpha==0) bypasses the vendor dispatch, so an oversized C ld must be rejected
-            // by the scale path itself. An oversized A ld is harmless there (A is never read) and must be accepted
-            // while C is well-formed -- verified by the succeeding calls below.
+            // by the scale path itself with the same vendor-int fence as the k>0 dispatch of this backend. An
+            // oversized A ld is harmless there (A is never read) and must be accepted while C is well-formed --
+            // verified by the succeeding calls below.
+            // Degenerate huge-C-ld parity: the k==0 branch must throw on the 32-bit-vendor-int backends exactly like
+            // the k>0 path above (upperCbig), proving the degenerate branch never enqueues a kernel whose row
+            // offsets exceed the tiny backing storage on those backends. A is k==0, so it is never read (its pitch
+            // stays arbitrary); only the C ld is oversized. oneMKL takes int64 dimensions, so its degenerate branch
+            // may accept the same metadata (matching its k>0 dispatch, which also accepts it).
+            {
+                auto Ak0 = alpaka::makeMdSpan(
+                    Astorage.data(),
+                    alpaka::Vec<uint32_t, 2u>{n, 0u},
+                    alpaka::Vec<std::size_t, 2u>{hugeLd * sizeof(Scalar), sizeof(Scalar)});
+                CHECK_THROWS_AS(alpaka::blas::onHost::herk(queue, 1.0f, Ak0, 2.0f, upperCbig), std::invalid_argument);
+            }
             // Oversized A ld but well-formed C: accepted in the degenerate branch (A untouched), and a non-degenerate
             // run proceeds far enough to reject via the A dispatch checkedCast.
             CHECK_THROWS_AS(alpaka::blas::onHost::herk(queue, 1.0f, A, 1.0f, upperCnormal), std::invalid_argument);

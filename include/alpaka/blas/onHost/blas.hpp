@@ -326,7 +326,10 @@ namespace alpaka::blas::onHost
      *   imaginary part remains zero, and off-diagonal elements scale in both real and imaginary part.
      *
      * The degenerate ``k == 0`` / ``alpha == 0`` path never reads ``A`` and never calls the backend BLAS routine; it
-     * runs a queued triangle-scale kernel on the same queue, so ordering against other queued work is preserved.
+     * runs a queued triangle-scale kernel on the same queue, so ordering against other queued work is preserved. Its
+     * metadata checks mirror the backend's own herk dispatch (the leading dimension is narrowed through the same
+     * vendor-int width, 32-bit on host/cuda/hip and 64-bit on oneMKL), so an enormously pitched ``C`` is rejected
+     * exactly when the ``k > 0`` path of the same backend would reject it.
      *
      * ``A`` and ``C`` must not overlap.
      *
