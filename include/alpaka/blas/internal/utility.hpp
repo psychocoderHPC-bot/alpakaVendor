@@ -21,11 +21,31 @@ namespace alpaka::blas::internal
     using alpaka::blas::detail::getTriangle;
     using alpaka::blas::detail::getView;
 
+    /** Scalar type of a BLAS operand view.
+     *
+     * ``Value_t`` intentionally strips cv-qualifiers so backend dispatch selects the scalar branch for read-only
+     * input views. The writable-operand guard ``validateWritable()`` prevents a const-element view from reaching a
+     * backend that writes in place.
+     */
     template<typename T>
-    using Value_t = alpaka::GetValueType_t<detail::unannotated_t<T>>;
+    using Value_t = std::remove_cv_t<alpaka::GetValueType_t<detail::unannotated_t<T>>>;
 
     template<typename T>
     constexpr bool isSupportedScalar_v = Scalar<Value_t<T>>;
+
+    /** Compile-time guard: a BLAS operand that is written in place must be a view with non-const element type.
+     *
+     * Without this guard, a const-element view passed to a writable operand would otherwise silently drop the
+     * constness (``Value_t`` strips cv-qualifiers) and the backend would write through a pointer the caller declared
+     * read-only.
+     */
+    template<typename T>
+    constexpr void validateWritable()
+    {
+        static_assert(
+            !std::is_const_v<alpaka::GetValueType_t<detail::unannotated_t<T>>>,
+            "The BLAS operand must be a writable view (element type must not be const).");
+    }
 
     template<typename T>
     constexpr auto asRealMagnitude(T value)
