@@ -7,6 +7,7 @@
 #include <alpakaTest/deviceHelper.hpp>
 #include <cmath>
 #include <complex>
+#include <limits>
 #include <utility>
 #include <vector>
 
@@ -452,6 +453,7 @@ TEMPLATE_LIST_TEST_CASE(
 
         using Scalar = alpaka::math::Complex<float>;
         using Real = RealOf<Scalar>;
+        auto const nanV = Scalar{static_cast<Real>(std::nan("")), static_cast<Real>(std::nan(""))};
         // n=0: assert C's storage is untouched (no-op contract). Use a backing buffer large enough to hold the
         // would-be result so any spurious write is observable, then build 0-row views over it.
         {
@@ -478,6 +480,12 @@ TEMPLATE_LIST_TEST_CASE(
             // Seed a nonzero imaginary part on the diagonal so a preserved/zeroed diagonal is observable.
             for(uint32_t i = 0; i < n; ++i)
                 C[alpaka::Vec<uint32_t, 2u>{i, i}].imag(Real{7.0f});
+            // The opposite (lower) triangle is outside the operation: seed it with a distinct known value and require
+            // it to stay byte-identical, proving the scale kernel writes only the selected half.
+            auto const lowerSentinel = Scalar{Real{1.25f}, Real{-3.75f}};
+            for(uint32_t i = 0; i < n; ++i)
+                for(uint32_t j = 0; j < i; ++j)
+                    C[alpaka::Vec<uint32_t, 2u>{i, j}] = lowerSentinel;
             auto const before = copyRaw(C.data(), n, n, ldOf(C));
             auto const ldC = ldOf(C);
             auto const upperC = alpaka::blas::upper(C);
@@ -497,6 +505,68 @@ TEMPLATE_LIST_TEST_CASE(
                     else
                         CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}] == betaR * before[i * ldC + j]);
                 }
+            for(uint32_t i = 0; i < n; ++i)
+                for(uint32_t j = 0; j < i; ++j)
+                    CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}] == lowerSentinel);
+        }
+        // Lower selection variant: the opposite (upper) triangle must be preserved byte-identically as well.
+        {
+            constexpr uint32_t n = 3u;
+            auto A = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{n, 0u});
+            auto C = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{n, n});
+            fillMatrixComplex(A, n, 0u);
+            fillMatrixComplex(C, n, n);
+            auto const upperSentinel = Scalar{Real{4.5f}, Real{-2.25f}};
+            for(uint32_t i = 0; i < n; ++i)
+                for(uint32_t j = i + 1u; j < n; ++j)
+                    C[alpaka::Vec<uint32_t, 2u>{i, j}] = upperSentinel;
+            auto const before = copyRaw(C.data(), n, n, ldOf(C));
+            auto const ldC = ldOf(C);
+            auto const lowerC = alpaka::blas::lower(C);
+            alpaka::blas::onHost::herk(queue, Real{1.0f}, A, Real{2.5f}, lowerC, options);
+            alpaka::onHost::wait(queue);
+            for(uint32_t i = 0; i < n; ++i)
+                for(uint32_t j = 0; j <= i; ++j)
+                {
+                    if(i == j)
+                        CHECK(
+                            C[alpaka::Vec<uint32_t, 2u>{i, j}] == Scalar{2.5f * before[i * ldC + j].real(), Real{0}});
+                    else
+                        CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}] == 2.5f * before[i * ldC + j]);
+                }
+            for(uint32_t i = 0; i < n; ++i)
+                for(uint32_t j = i + 1u; j < n; ++j)
+                    CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}] == upperSentinel);
+        }
+        // Degenerate kernel must not read C when beta == 0: seed the selected triangle with NaN; a read would
+        // propagate NaN into the zeroed result. This covers both degenerate legs: k == 0 (with alpha != 0) and
+        // alpha == 0 (with k != 0); both route through the same enqueueScaleTriangle kernel.
+        {
+            constexpr uint32_t n = 3u;
+            auto A = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{n, 0u});
+            auto C = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{n, n});
+            fillMatrixComplex(A, n, 0u);
+            fillMatrixSentinel(C, n, n, nanV);
+            auto const upperC = alpaka::blas::upper(C);
+            alpaka::blas::onHost::herk(queue, Real{1.0f}, A, Real{0.0f}, upperC, options);
+            alpaka::onHost::wait(queue);
+            for(uint32_t i = 0; i < n; ++i)
+                for(uint32_t j = i; j < n; ++j)
+                    CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}] == Scalar{0.0f, 0.0f});
+        }
+        {
+            constexpr uint32_t n = 3u;
+            constexpr uint32_t k = 2u;
+            auto A = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{n, k});
+            auto C = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{n, n});
+            fillMatrixComplex(A, n, k);
+            fillMatrixSentinel(C, n, n, nanV);
+            auto const upperC = alpaka::blas::upper(C);
+            alpaka::blas::onHost::herk(queue, Real{0.0f}, A, Real{0.0f}, upperC, options);
+            alpaka::onHost::wait(queue);
+            for(uint32_t i = 0; i < n; ++i)
+                for(uint32_t j = i; j < n; ++j)
+                    CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}] == Scalar{0.0f, 0.0f});
         }
         // Coefficient matrix: alpha in {0, 1, negative} and beta in {0, 1, nontrivial}. Fresh A and C per
         // combination so each case starts from the same initial state.
@@ -603,6 +673,119 @@ TEMPLATE_LIST_TEST_CASE(
             for(uint32_t i = 0; i < n; ++i)
                 for(uint32_t j = 0; j < n; ++j)
                     CHECK(C[alpaka::Vec<uint32_t, 2u>{i, j}] == Scalar{4.0f, -7.0f});
+        }
+    }
+}
+
+TEMPLATE_LIST_TEST_CASE(
+    "BLAS herk degenerate k=0 scale stays queue-ordered without intermediate waits",
+    "[integr][blas][rankk][herk]",
+    TestBackends)
+{
+    auto deviceExec = getDeviceExecutorOrSkipTest(TestType::makeDict());
+    auto device = getDevice(deviceExec);
+    if constexpr(!isBlasBackendEnabledForDevice(device))
+    {
+        SKIP("No BLAS backend enabled for this alpaka API.");
+    }
+    else
+    {
+        auto queue = device.makeQueue();
+        auto const options = alpaka::blas::Options{
+            .precision = alpaka::blas::Precision::exact,
+            .algorithm = alpaka::blas::Algorithm::fastest};
+
+        using Scalar = alpaka::math::Complex<float>;
+        using Real = RealOf<Scalar>;
+        constexpr uint32_t n = 3u;
+        // Producer/consumer chain with no intermediate wait: a queued fill overwrites C, then the degenerate k==0
+        // herk must scale that produced value, then a queued memcpy reads C back to host. If the scale kernel were not
+        // enqueued/in-order, the consumer would observe either the unscaled producer value (missing enqueue or wrong
+        // stream) or a stale value. The expected result is deterministic: beta * (producer value).
+        auto A0 = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{n, 0u});
+        auto C = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{n, n});
+        auto hostC = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{n, n});
+        fillMatrixComplex(A0, n, 0u);
+        auto const producerValue = Scalar{Real{3.0f}, Real{-1.5f}};
+        auto zeroC = [&](auto& view)
+        {
+            for(uint32_t i = 0; i < n; ++i)
+                for(uint32_t j = 0; j < n; ++j)
+                    view[alpaka::Vec<uint32_t, 2u>{i, j}] = producerValue;
+        };
+        // Two betas: 2 (positive scaling), and -3 (negative scaling). beta==1 would be a true no-op that enqueues
+        // nothing, so it is not usable to prove ordering.
+        for(auto const betaR : {Real{2.0f}, Real{-3.0f}})
+        {
+            zeroC(C);
+            auto upperC = alpaka::blas::upper(C);
+            // Producer (queued fill), degenerate k==0 herk, consumer (queued memcpy): no wait in between.
+            alpaka::onHost::fill(queue, C, producerValue);
+            alpaka::blas::onHost::herk(queue, Real{1.0f}, A0, betaR, upperC, options);
+            alpaka::onHost::memcpy(queue, hostC, C);
+            alpaka::onHost::wait(queue);
+            auto expectedProd = producerValue;
+            for(uint32_t i = 0; i < n; ++i)
+                for(uint32_t j = i; j < n; ++j)
+                {
+                    Scalar expected{betaR * expectedProd.real(), Real{0}};
+                    if(i != j)
+                        expected = betaR * expectedProd;
+                    CHECK(hostC[alpaka::Vec<uint32_t, 2u>{i, j}] == expected);
+                }
+        }
+        // Ordering half: the producer must be observed before the scale. Use two halves with different betas chained
+        // into one queue without waits; the first herk writes a nonzero pattern, the second scales it.
+        {
+            zeroC(C);
+            auto upperC = alpaka::blas::upper(C);
+            // Producer: k=2 non-degenerate herk overwrites C fully (beta=0).
+            auto A = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{n, 2u});
+            fillMatrixComplex(A, n, 2u);
+            // Consumer copies back through the queue.
+            alpaka::blas::onHost::herk(queue, Real{1.0f}, A, Real{0.0f}, upperC, options);
+            alpaka::blas::onHost::herk(queue, Real{1.0f}, A0, Real{2.0f}, upperC, options);
+            alpaka::onHost::memcpy(queue, hostC, C);
+            alpaka::onHost::wait(queue);
+            auto const ldA = ldOf(A);
+            auto const ldC = ldOf(C);
+            auto const Aref = copyRaw(A.data(), n, 2u, ldA);
+            // Reference: the producer herk (alpha=1,beta=0) writes into the pre-state, then beta=2 scales it.
+            auto prodRef = std::vector<Scalar>(n * ldC, Scalar{producerValue});
+            for(uint32_t i = 0; i < n; ++i)
+                for(uint32_t j = 0; j < n; ++j)
+                    prodRef[i * ldC + j] = producerValue;
+            blas::herkRef(
+                Real{1.0f},
+                Aref.data(),
+                ldA,
+                n,
+                2u,
+                alpaka::blas::Transpose::none,
+                Real{0.0f},
+                prodRef.data(),
+                ldC,
+                n,
+                alpaka::blas::Triangle::upper);
+            // apply beta=2 scaling on the upper triangle
+            for(uint32_t i = 0; i < n; ++i)
+                for(uint32_t j = i; j < n; ++j)
+                {
+                    if(i == j)
+                        prodRef[i * ldC + j] = Scalar{2.0f * prodRef[i * ldC + j].real(), Real{0}};
+                    else
+                        prodRef[i * ldC + j] = 2.0f * prodRef[i * ldC + j];
+                }
+            for(uint32_t i = 0; i < n; ++i)
+                for(uint32_t j = i; j < n; ++j)
+                {
+                    CHECK(
+                        hostC[alpaka::Vec<uint32_t, 2u>{i, j}].real()
+                        == Catch::Approx(prodRef[i * ldC + j].real()).epsilon(1e-4f).margin(1e-4f));
+                    CHECK(
+                        hostC[alpaka::Vec<uint32_t, 2u>{i, j}].imag()
+                        == Catch::Approx(prodRef[i * ldC + j].imag()).epsilon(1e-4f).margin(1e-4f));
+                }
         }
     }
 }
@@ -840,6 +1023,7 @@ TEMPLATE_LIST_TEST_CASE(
             Astorage.data(),
             alpaka::Vec<uint32_t, 2u>{n, k},
             alpaka::Vec<std::size_t, 2u>{static_cast<std::size_t>(n) * sizeof(Scalar), sizeof(Scalar)});
+
         // Deliberately fill none of the oversized views: the enormous pitch means any element write would overflow
         // the tiny backing storage. The rejection must come from metadata alone, before any data access.
         if constexpr(!std::same_as<ALPAKA_TYPEOF(device.getApi()), alpaka::api::OneApi>)
