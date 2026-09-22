@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <alpakaTest/deviceHelper.hpp>
+#include <cstdint>
 #include <limits>
 #include <utility>
 #include <vector>
@@ -263,7 +264,10 @@ TEMPLATE_LIST_TEST_CASE("BLAS level1 dotc conjugated dot product", "[integr][bla
     }
 }
 
-TEMPLATE_LIST_TEST_CASE("BLAS dotc oversized n rejected by checkedCast", "[integr][blas][level1][dotc]", TestBackends)
+TEMPLATE_LIST_TEST_CASE(
+    "BLAS dotc oversized n rejected by checkedCast on 32-bit descriptor backends",
+    "[integr][blas][level1][dotc]",
+    TestBackends)
 {
     auto deviceExec = getDeviceExecutorOrSkipTest(TestType::makeDict());
     auto device = getDevice(deviceExec);
@@ -290,9 +294,14 @@ TEMPLATE_LIST_TEST_CASE("BLAS dotc oversized n rejected by checkedCast", "[integ
         }
         else
         {
-            // oneMKL accepts 64-bit descriptor integers, so the same oversized extent is representable there and no
-            // checkedCast applies. The call is intentionally not enqueued here: executing a dotc over an absurd
-            // number of elements backed by a single-element buffer would read out of bounds.
+            // Rejection is claimed only where the vendor API limits the descriptor integer width. oneMKL takes 64-bit
+            // descriptor integers, so the same oversized extent is representable there and no checkedCast triggers;
+            // the assertion below exercises exactly that metadata path. The reduction is intentionally not enqueued:
+            // executing a dotc over hugeN elements backed by a single-element buffer would read out of bounds.
+            auto const xDesc = alpaka::blas::internal::makeVectorDescriptor(xbig);
+            auto const yDesc = alpaka::blas::internal::makeVectorDescriptor(ybig);
+            CHECK(xDesc.n == static_cast<std::int64_t>(hugeN));
+            CHECK(yDesc.n == static_cast<std::int64_t>(hugeN));
         }
     }
 }

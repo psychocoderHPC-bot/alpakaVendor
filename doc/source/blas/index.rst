@@ -51,7 +51,7 @@ Routine reference
      - ``result[0] = sum_i conj(x[i]) * y[i]`` (first operand conjugated)
      - ``float``, ``double``, ``alpaka::math::Complex<float>``, ``alpaka::math::Complex<double>``
 
-``dotc`` maps to the vendor conjugate-dot-product routines (``*dotc``/``*dotu`` elsewhere) and, like ``dot``, is
+``dotc`` maps to the vendor conjugate-dot-product routines (``*dotc`` elsewhere) and, like ``dot``, is
 available on the OpenBLAS/CBLAS host, cuBLAS, rocBLAS, and oneMKL host paths. It is not provided for OpenMP or the
 generic native alpaka CPU queues.
 
