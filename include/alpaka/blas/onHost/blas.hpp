@@ -346,18 +346,14 @@ namespace alpaka::blas::onHost
         auto beta,
         concepts::MatrixView auto& C,
         Options options = {})
+        requires(
+            ComplexScalar<internal::Value_t<ALPAKA_TYPEOF(A)>>
+            && std::same_as<internal::Value_t<ALPAKA_TYPEOF(A)>, internal::Value_t<ALPAKA_TYPEOF(C)>>
+            && RealScalar<std::remove_cv_t<decltype(alpha)>>
+            && RealScalar<std::remove_cv_t<decltype(beta)>>
+            && !std::is_const_v<alpaka::GetValueType_t<alpaka::blas::detail::unannotated_t<ALPAKA_TYPEOF(C)>>>)
     {
         using T = internal::Value_t<ALPAKA_TYPEOF(A)>;
-        static_assert(ComplexScalar<T>, "herk supports only complex scalar types.");
-        static_assert(
-            std::same_as<T, internal::Value_t<ALPAKA_TYPEOF(C)>>,
-            "herk requires A and C to have the same element type.");
-        static_assert(
-            RealScalar<std::remove_cv_t<decltype(alpha)>>,
-            "herk requires a real alpha, not a complex coefficient.");
-        static_assert(
-            RealScalar<std::remove_cv_t<decltype(beta)>>,
-            "herk requires a real beta, not a complex coefficient.");
         internal::validateWritable<ALPAKA_TYPEOF(C)>();
         internal::validateHerk(A, C);
         auto const ad = internal::makeMatrixDescriptor(A);
