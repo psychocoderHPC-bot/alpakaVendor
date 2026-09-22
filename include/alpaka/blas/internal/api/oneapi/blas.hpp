@@ -572,7 +572,7 @@ namespace alpaka::blas::internal
         auto const& A,
         auto beta,
         auto& C,
-        [[maybe_unused]] Options options)
+        Options options)
     {
         // Value_t keeps cv-qualifiers; dispatch on the unqualified scalar so a const-element A (read-only input)
         // selects the same vendor branch as a writable A.
@@ -588,8 +588,15 @@ namespace alpaka::blas::internal
         // oneMKL herk expects real scalars (value_or_pointer<Treal>), so use REAL coefficients, not the complex type.
         auto const alphaT = static_cast<Real_t<T>>(alpha);
         auto const betaT = static_cast<Real_t<T>>(beta);
-        // oneMKL alternate compute modes are GEMM-only; HERK uses the standard/default compute mode, which is the
-        // routine default, so no compute-mode argument is passed.
+        // oneMKL alternate compute modes (prefer_alternate) are GEMM-only and must NOT be requested for HERK, so the
+        // options are translated conservatively: a standard/deterministic request maps to compute_mode::standard,
+        // any other request leaves the oneMKL routine default (compute_mode::unset). The mode is always passed
+        // explicitly so options are never silently discarded; the mapping mirrors the GEMM/trsm dispatches' helper
+        // for the supported modes while never requesting the GEMM-only alternate mode.
+        auto const computeMode
+            = options.precision == Precision::exact || options.algorithm == Algorithm::deterministic
+            ? oneapi::mkl::blas::compute_mode::standard
+            : oneapi::mkl::blas::compute_mode::unset;
         queue.enqueueNativeFn(
             [=](sycl::queue q) -> sycl::event
             {
@@ -607,6 +614,7 @@ namespace alpaka::blas::internal
                     betaT,
                     oneMklPtr<T>(cd.mutPtr),
                     cd.ld,
+                    computeMode,
                     deps);
             });
     }
