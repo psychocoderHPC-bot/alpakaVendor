@@ -12,8 +12,11 @@
  * proves the machinery (cv-preservation, the writability guard, and that the writable forms still form), while the
  * guarded negative half instantiates the const-output calls and is compiled separately expecting failure.
  *
- * The guarded negative half is only compiled when ``ALPAKAV_BLAS_TEST_NEGATIVE_CONST_OUTPUT`` is defined (see the
- * compile-fail validation step). It is not part of the normal build.
+ * The guarded negative half is only compiled when ``ALPAKAV_BLAS_TEST_NEGATIVE_CONST_OUTPUT`` is defined. The build
+ * wires a dedicated ctest-case (``blas_const_output_negative_compile``, see test/CMakeLists.txt) that compiles this
+ * translation unit with that macro and expects the build to fail (WILL_FAIL): a regression that accidentally makes
+ * a const output form would instead succeed the compile and flip the ctest-case red, so the const-output contract
+ * is enforced machine-checked in CI rather than by a one-off manual check.
  */
 
 #include <catch2/catch_test_macros.hpp>
