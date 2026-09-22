@@ -8,6 +8,9 @@
 #include "alpaka/blas.hpp"
 #include "test.hpp"
 
+#include <stdexcept>
+#include <vector>
+
 using namespace alpakaVendor::test;
 
 TEMPLATE_LIST_TEST_CASE("blas annotations and metadata", "[unit][blas][annotations]", TestBackends)
@@ -58,4 +61,29 @@ TEMPLATE_LIST_TEST_CASE(
     CHECK(batchDesc.ld == 6);
     CHECK(batchDesc.batchCount == 2);
     CHECK(batchDesc.batchStride == 24);
+}
+
+TEMPLATE_LIST_TEST_CASE(
+    "blas descriptors reject pitches that are not multiples of the element size",
+    "[unit][blas][layout]",
+    TestBackends)
+{
+    // Row pitch of a 3x4 matrix is 6*sizeof(float)+2 bytes and the batched batch pitch is
+    // 24*sizeof(float)+4 bytes: both are not multiples of sizeof(float).
+    auto constexpr storage = 128u;
+    auto buffer = std::vector<float>(storage);
+
+    auto misalignedRowPitch = alpaka::makeMdSpan(
+        buffer.data(),
+        alpaka::Vec<uint32_t, 2u>{3u, 4u},
+        alpaka::Vec<std::size_t, 2u>{6u * sizeof(float) + 2u, sizeof(float)});
+    CHECK_THROWS_AS(alpaka::blas::internal::makeMatrixDescriptor(misalignedRowPitch), std::invalid_argument);
+
+    auto misalignedBatchPitch = alpaka::makeMdSpan(
+        buffer.data(),
+        alpaka::Vec<uint32_t, 3u>{2u, 3u, 4u},
+        alpaka::Vec<std::size_t, 3u>{24u * sizeof(float) + 4u, 6u * sizeof(float) + 2u, sizeof(float)});
+    CHECK_THROWS_AS(
+        alpaka::blas::internal::makeBatchedMatrixDescriptor(misalignedBatchPitch),
+        std::invalid_argument);
 }

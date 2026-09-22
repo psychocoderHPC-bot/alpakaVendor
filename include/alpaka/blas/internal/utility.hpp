@@ -146,6 +146,8 @@ namespace alpaka::blas::internal
         auto const strideCol = pt.x() / sizeof(Value_t<View>);
         if(strideCol != 1u)
             throw std::invalid_argument("Only row-major dense 2D views are supported.");
+        if(pt.y() % sizeof(Value_t<View>) != 0u)
+            throw std::invalid_argument("Row pitch must be a multiple of the element size.");
         auto const strideRow = pt.y() / sizeof(Value_t<View>);
         if(strideRow < ex.x())
             throw std::invalid_argument("Invalid row-major leading dimension.");
@@ -171,6 +173,10 @@ namespace alpaka::blas::internal
         auto const strideCol = pt.x() / sizeof(Value_t<View>);
         if(strideCol != 1u)
             throw std::invalid_argument("Only row-major dense 3D batched views are supported.");
+        if(pt.y() % sizeof(Value_t<View>) != 0u)
+            throw std::invalid_argument("Row pitch must be a multiple of the element size.");
+        if(pt.z() % sizeof(Value_t<View>) != 0u)
+            throw std::invalid_argument("Batch pitch must be a multiple of the element size.");
         auto const strideRow = pt.y() / sizeof(Value_t<View>);
         auto const strideBatch = pt.z() / sizeof(Value_t<View>);
         if(strideRow < ex.x())
