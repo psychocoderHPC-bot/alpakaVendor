@@ -893,7 +893,9 @@ namespace alpaka::blas::internal
         auto& C,
         Options options)
     {
-        using T = Value_t<ALPAKA_TYPEOF(A)>;
+        // Value_t keeps cv-qualifiers; dispatch on the unqualified scalar so a const-element A (read-only input)
+        // selects the same vendor branch as a writable A.
+        using T = std::remove_cv_t<Value_t<ALPAKA_TYPEOF(A)>>;
         static_assert(ComplexScalar<T>, "herk supports only complex scalar types.");
         auto const ad = makeMatrixDescriptor(A);
         auto const cd = makeMatrixDescriptor(C);

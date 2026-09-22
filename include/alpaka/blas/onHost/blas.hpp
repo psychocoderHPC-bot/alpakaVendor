@@ -347,12 +347,16 @@ namespace alpaka::blas::onHost
         concepts::MatrixView auto& C,
         Options options = {})
         requires(
-            ComplexScalar<internal::Value_t<ALPAKA_TYPEOF(A)>>
-            && std::same_as<internal::Value_t<ALPAKA_TYPEOF(A)>, internal::Value_t<ALPAKA_TYPEOF(C)>>
+            ComplexScalar<std::remove_cv_t<internal::Value_t<ALPAKA_TYPEOF(A)>>>
+            && std::same_as<
+                std::remove_cv_t<internal::Value_t<ALPAKA_TYPEOF(A)>>,
+                std::remove_cv_t<internal::Value_t<ALPAKA_TYPEOF(C)>>>
             && RealScalar<std::remove_cv_t<decltype(alpha)>> && RealScalar<std::remove_cv_t<decltype(beta)>>
             && !std::is_const_v<alpaka::GetValueType_t<alpaka::blas::detail::unannotated_t<ALPAKA_TYPEOF(C)>>>)
     {
-        using T = internal::Value_t<ALPAKA_TYPEOF(A)>;
+        // Value_t keeps cv-qualifiers; herk dispatches with the unqualified scalar type so a const-element A selects
+        // the same vendor branch as a writable A while the validated writable C stays checked below.
+        using T = std::remove_cv_t<internal::Value_t<ALPAKA_TYPEOF(A)>>;
         internal::validateWritable<ALPAKA_TYPEOF(C)>();
         internal::validateHerk(A, C);
         auto const ad = internal::makeMatrixDescriptor(A);

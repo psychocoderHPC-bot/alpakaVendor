@@ -21,24 +21,12 @@ namespace alpaka::blas::internal
     using alpaka::blas::detail::getTriangle;
     using alpaka::blas::detail::getView;
 
-    /** Scalar type of a BLAS operand view.
-     *
-     * ``Value_t`` intentionally strips cv-qualifiers so backend dispatch selects the scalar branch for read-only
-     * input views. The writable-operand guard ``validateWritable()`` prevents a const-element view from reaching a
-     * backend that writes in place.
-     */
     template<typename T>
-    using Value_t = std::remove_cv_t<alpaka::GetValueType_t<detail::unannotated_t<T>>>;
+    using Value_t = alpaka::GetValueType_t<detail::unannotated_t<T>>;
 
     template<typename T>
     constexpr bool isSupportedScalar_v = Scalar<Value_t<T>>;
 
-    /** Compile-time guard: a BLAS operand that is written in place must be a view with non-const element type.
-     *
-     * Without this guard, a const-element view passed to a writable operand would otherwise silently drop the
-     * constness (``Value_t`` strips cv-qualifiers) and the backend would write through a pointer the caller declared
-     * read-only.
-     */
     template<typename T>
     constexpr void validateWritable()
     {
@@ -300,10 +288,13 @@ namespace alpaka::blas::internal
     template<typename T_A, typename T_C>
     inline void validateHerk(T_A const& A, T_C const& C)
     {
-        static_assert(ComplexScalar<Value_t<T_A>>, "herk requires a complex A.");
-        static_assert(
-            std::same_as<Value_t<T_A>, Value_t<T_C>>,
-            "herk requires A and C to have the same element type.");
+        // Value_t keeps cv-qualifiers, so both A (possibly const-element) and C (writable) are compared after
+        // removing const: herk requires a complex element type shared by A and C, and rejects mismatched complex
+        // scalars (finding: Complex<float> A with Complex<double> C must not silently select a backend overload).
+        using AValue = std::remove_cv_t<Value_t<T_A>>;
+        using CValue = std::remove_cv_t<Value_t<T_C>>;
+        static_assert(ComplexScalar<AValue>, "herk requires a complex A.");
+        static_assert(std::same_as<AValue, CValue>, "herk requires A and C to have the same element type.");
         auto const ad = makeMatrixDescriptor(A);
         auto const cd = makeMatrixDescriptor(C);
         // A is a general dense matrix: reject triangle/unit-diagonal annotations.
