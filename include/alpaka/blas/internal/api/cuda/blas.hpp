@@ -54,6 +54,16 @@ namespace alpaka::blas::internal
                 std::string{what} + " failed with cuBLAS error code " + std::to_string(int(status)));
     }
 
+    // cuBLAS Iamax returns a 0-based index (netlib BLAS is 1-based). Convert to 1-based directly on the
+    // device and gate the +1 on n > 0 so an empty vector (n == 0) keeps the vendor result 0. The kernel
+    // is stream-ordered with the cuBLAS call because it is launched on the same native stream.
+    template<typename T_Result>
+    __global__ void iamaxToOneBasedKernel(int n, T_Result* resultPtr)
+    {
+        if(n > 0)
+            *resultPtr += 1;
+    }
+
     struct CublasHandle
     {
         cublasHandle_t handle{};
@@ -669,6 +679,9 @@ namespace alpaka::blas::internal
                             int(xd.inc),
                             reinterpret_cast<int*>(resultPtr)),
                         "cublasIzamax");
+                // convert the 0-based cuBLAS result into the documented 1-based index. The kernel runs on the
+                // same stream as the cuBLAS call, therefore the increment is sequenced after the reduction.
+                iamaxToOneBasedKernel<<<1, 1, 0, nativeStream>>>(int(xd.n), reinterpret_cast<int*>(resultPtr));
             });
     }
 

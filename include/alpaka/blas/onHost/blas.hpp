@@ -206,6 +206,8 @@ namespace alpaka::blas::onHost
     /**
      * Return the 1-based index of the entry with largest absolute value.
      *
+     * Returns 0 if the vector is empty (n == 0).
+     *
      * This follows the BLAS convention, so the first element has index ``1`` rather than ``0``.
      *
      * @param queue alpaka queue that defines when the work runs.

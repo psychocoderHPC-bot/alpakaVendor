@@ -77,6 +77,8 @@ TEMPLATE_LIST_TEST_CASE("Tutorial: BLAS walkthrough", "[doc][tutorial][blas]", T
         CHECK(dotcResult.data()[0] == Catch::Approx(28.0f));
         CHECK(nrm2Result.data()[0] == Catch::Approx(std::sqrt(14.0f)).epsilon(1.0e-5));
         CHECK(asumResult.data()[0] == Catch::Approx(9.0f));
+        // iamax is 1-based: the index of the element with the largest absolute value.
+        // An empty vector (n == 0) returns 0.
         CHECK(iamaxResult.data()[0] == 1);
         //! [blas-tutorial-level1]
 

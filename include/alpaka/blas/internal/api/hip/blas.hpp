@@ -22,6 +22,16 @@ namespace alpaka::blas::internal
                 std::string{what} + " failed with rocBLAS error code " + std::to_string(int(status)));
     }
 
+    // rocBLAS Iamax returns a 0-based index (netlib BLAS is 1-based). Convert to 1-based directly on the
+    // device and gate the +1 on n > 0 so an empty vector (n == 0) keeps the vendor result 0. The kernel
+    // is stream-ordered with the rocBLAS call because it is launched on the same native stream.
+    template<typename T_Result>
+    __global__ void iamaxToOneBasedKernel(int n, T_Result* resultPtr)
+    {
+        if(n > 0)
+            *resultPtr += 1;
+    }
+
     struct RocblasHandle
     {
         rocblas_handle handle{};
@@ -623,6 +633,9 @@ namespace alpaka::blas::internal
                             xd.inc,
                             reinterpret_cast<rocblas_int*>(resultPtr)),
                         "rocblas_izamax");
+                // convert the 0-based rocBLAS result into the documented 1-based index. The kernel runs on the
+                // same stream as the rocBLAS call, therefore the increment is sequenced after the reduction.
+                iamaxToOneBasedKernel<<<1, 1, 0, nativeStream>>>(int(xd.n), reinterpret_cast<rocblas_int*>(resultPtr));
             });
     }
 

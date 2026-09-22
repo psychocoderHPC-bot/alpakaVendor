@@ -35,7 +35,7 @@ What this covers in one go:
 - ``asum(queue, x, result)``
 - ``iamax(queue, x, result)``
 
-``iamax`` follows the BLAS convention and returns a **1-based** index.
+``iamax`` returns a 1-based index; empty vectors (n == 0) return 0.
 
 Alongside ``dot`` the tutorial computes ``dotc``, which is identical for the real-valued data used there and therefore
 also yields ``28.0`` in ``dotcResult``. The difference shows up only for complex operands: ``dotc`` conjugates the

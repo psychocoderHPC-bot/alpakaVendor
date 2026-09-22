@@ -84,6 +84,13 @@ TEMPLATE_LIST_TEST_CASE("BLAS level1 real and complex vectors", "[integr][blas][
         CHECK(nrm2Result.data()[0] == Catch::Approx(blas::nrm2Ref(x.data(), n)).epsilon(1e-4));
         CHECK(asumResult.data()[0] == Catch::Approx(blas::asumRef(x.data(), n)).epsilon(1e-4));
         CHECK(iamaxResult.data()[0] == blas::iamaxRef(x.data(), n));
+
+        // iamax must return 0 for an empty (zero-extent) vector on every backend.
+        auto xEmpty = alpaka::onHost::allocUnified<Scalar>(device, 0u);
+        auto iamaxEmptyResult = alpaka::onHost::allocUnified<int>(device, 1u);
+        alpaka::blas::onHost::iamax(queue, xEmpty, iamaxEmptyResult, options);
+        alpaka::onHost::wait(queue);
+        CHECK(iamaxEmptyResult.data()[0] == 0);
     }
 }
 
