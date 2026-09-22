@@ -25,12 +25,24 @@ namespace alpaka::blas::internal
     // rocBLAS Iamax returns a 0-based index (netlib BLAS is 1-based). Convert to 1-based directly on the
     // device and gate the +1 on n > 0 so an empty vector (n == 0) keeps the vendor result 0. The kernel
     // is stream-ordered with the rocBLAS call because it is launched on the same native stream.
+#    if defined(__HIPCC__)
     template<typename T_Result>
-    __global__ void iamaxToOneBasedKernel(int n, T_Result* resultPtr)
+    __global__ void rocblasIamaxToOneBasedKernel(int n, T_Result* resultPtr)
     {
         if(n > 0)
             *resultPtr += 1;
     }
+#    else
+    // Host-only translation units parsing this header with the HIP runtime headers present cannot compile
+    // device syntax (`__global__`/`<<<>>>`). The device conversion is only reachable from a real HIP
+    // compilation, so this branch only needs to keep the enqueueNativeFn callback below valid C++.
+    template<typename T_Result>
+    inline void rocblasIamaxToOneBasedKernel(int n, T_Result* resultPtr)
+    {
+        static_cast<void>(n);
+        static_cast<void>(resultPtr);
+    }
+#    endif
 
     struct RocblasHandle
     {
@@ -633,9 +645,17 @@ namespace alpaka::blas::internal
                             xd.inc,
                             reinterpret_cast<rocblas_int*>(resultPtr)),
                         "rocblas_izamax");
-                // convert the 0-based rocBLAS result into the documented 1-based index. The kernel runs on the
-                // same stream as the rocBLAS call, therefore the increment is sequenced after the reduction.
-                iamaxToOneBasedKernel<<<1, 1, 0, nativeStream>>>(int(xd.n), reinterpret_cast<rocblas_int*>(resultPtr));
+            // convert the 0-based rocBLAS result into the documented 1-based index. The kernel runs on the
+            // same stream as the rocBLAS call, therefore the increment is sequenced after the reduction.
+#    if defined(__HIPCC__)
+                rocblasIamaxToOneBasedKernel<<<1, 1, 0, nativeStream>>>(
+                    int(xd.n),
+                    reinterpret_cast<rocblas_int*>(resultPtr));
+                ALPAKA_UNIFORM_CUDA_HIP_RT_CHECK(ApiHipRt, ApiHipRt::getLastError());
+#    else
+                // Device compilation is disabled by the host compiler; the conversion stays a no-op here.
+                rocblasIamaxToOneBasedKernel(int(xd.n), reinterpret_cast<rocblas_int*>(resultPtr));
+#    endif
             });
     }
 
