@@ -1009,7 +1009,8 @@ TEMPLATE_LIST_TEST_CASE(
 
         // Positive control: writable upper(C), complex A, real coefficients.
         static_assert(herkCallable<int, Real, TViewA, Real, TViewC>);
-        // Read-only A works: a const-element A is a valid input view (descriptor Value_t is cv-stripped).
+        // Read-only A works: a const-element A is a valid input view (herk dispatches with the unqualified scalar
+        // derived locally from the cv-preserving Value_t).
         static_assert(herkCallable<int, Real, TViewAconst, Real, TViewC>);
         // Rejections: const-element C, real-valued A, complex alpha, complex beta, mismatched A/C element types, and
         // a Complex<double> A combined with a Complex<float> C.
