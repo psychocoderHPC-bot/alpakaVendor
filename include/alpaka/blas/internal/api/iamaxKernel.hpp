@@ -1,0 +1,27 @@
+/*
+ * Copyright 2026 René Widera
+ * SPDX-License-Identifier: ISC
+ */
+
+#pragma once
+
+#include "alpaka/core/common.hpp"
+
+namespace alpaka::blas::internal
+{
+    /** Convert a 0-based vendor iamax result into the documented 1-based BLAS index.
+     *
+     * The functor is launched as a regular alpaka kernel on the same queue as the vendor reduction. Therefore it
+     * is sequenced after the vendor call and inherits the queue kind semantics (e.g. blocking). The increment is
+     * gated on n > 0 so an empty vector (n == 0) keeps the vendor result 0.
+     */
+    struct IamaxToOneBasedKernel
+    {
+        template<typename TAcc, typename T>
+        ALPAKA_FN_ACC void operator()(TAcc const&, T* resultPtr, int n) const
+        {
+            if(n > 0)
+                *resultPtr += 1;
+        }
+    };
+} // namespace alpaka::blas::internal

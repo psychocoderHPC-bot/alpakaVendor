@@ -8,6 +8,7 @@
 #include <type_traits>
 
 #include "alpaka/blas/internal/api/config.hpp"
+#include "alpaka/blas/internal/api/iamaxKernel.hpp"
 
 #if ALPAKAV_DEP_CUBLAS && ALPAKAV_HAS_CUBLAS
 namespace alpaka::blas::internal
@@ -53,28 +54,6 @@ namespace alpaka::blas::internal
             throw std::invalid_argument(
                 std::string{what} + " failed with cuBLAS error code " + std::to_string(int(status)));
     }
-
-    // cuBLAS Iamax returns a 0-based index (netlib BLAS is 1-based). Convert to 1-based directly on the
-    // device and gate the +1 on n > 0 so an empty vector (n == 0) keeps the vendor result 0. The kernel
-    // is stream-ordered with the cuBLAS call because it is launched on the same native stream.
-#    if defined(__CUDACC__)
-    template<typename T_Result>
-    __global__ void cublasIamaxToOneBasedKernel(int n, T_Result* resultPtr)
-    {
-        if(n > 0)
-            *resultPtr += 1;
-    }
-#    else
-    // Host-only translation units parsing this header with the CUDA runtime headers present cannot compile
-    // device syntax (`__global__`/`<<<>>>`). The device conversion is only reachable from a real CUDA
-    // compilation, so this branch only needs to keep the enqueueNativeFn callback below valid C++.
-    template<typename T_Result>
-    inline void cublasIamaxToOneBasedKernel(int n, T_Result* resultPtr)
-    {
-        static_cast<void>(n);
-        static_cast<void>(resultPtr);
-    }
-#    endif
 
     struct CublasHandle
     {
@@ -691,16 +670,15 @@ namespace alpaka::blas::internal
                             int(xd.inc),
                             reinterpret_cast<int*>(resultPtr)),
                         "cublasIzamax");
-            // convert the 0-based cuBLAS result into the documented 1-based index. The kernel runs on the
-            // same stream as the cuBLAS call, therefore the increment is sequenced after the reduction.
-#    if defined(__CUDACC__)
-                cublasIamaxToOneBasedKernel<<<1, 1, 0, nativeStream>>>(int(xd.n), reinterpret_cast<int*>(resultPtr));
-                ALPAKA_UNIFORM_CUDA_HIP_RT_CHECK(ApiCudaRt, ApiCudaRt::getLastError());
-#    else
-                // Device compilation is disabled by the host compiler; the conversion stays a no-op here.
-                cublasIamaxToOneBasedKernel(int(xd.n), reinterpret_cast<int*>(resultPtr));
-#    endif
             });
+        // Convert the 0-based cuBLAS result into the documented 1-based index. This is a regular alpaka kernel
+        // on the same queue, hence it is sequenced after the vendor call and inherits the queue-kind semantics
+        // (e.g. blocking queues).
+        queue.enqueue(
+            alpaka::onHost::ThreadSpec{1u, 1u},
+            IamaxToOneBasedKernel{},
+            reinterpret_cast<int*>(resultPtr),
+            static_cast<int>(xd.n));
     }
 
     void alpakaFnDispatch(
