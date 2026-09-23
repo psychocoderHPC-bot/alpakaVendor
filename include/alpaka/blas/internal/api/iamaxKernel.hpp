@@ -12,8 +12,9 @@ namespace alpaka::blas::internal
     /** Convert a 0-based vendor iamax result into the documented 1-based BLAS index.
      *
      * The functor is launched as a regular alpaka kernel on the same queue as the vendor reduction. Therefore it
-     * is sequenced after the vendor call and inherits the queue kind semantics (e.g. blocking). The increment is
-     * gated on n > 0 so an empty vector (n == 0) keeps the vendor result 0.
+     * is sequenced after the vendor call and inherits the queue kind semantics (e.g. blocking). For n > 0 the
+     * vendor result is incremented; for n <= 0 the result is set to 0 so the empty-vector contract is enforced
+     * independently of the vendor's behavior.
      */
     struct IamaxToOneBasedKernel
     {
@@ -22,6 +23,8 @@ namespace alpaka::blas::internal
         {
             if(n > 0)
                 *resultPtr += 1;
+            else
+                *resultPtr = 0;
         }
     };
 } // namespace alpaka::blas::internal

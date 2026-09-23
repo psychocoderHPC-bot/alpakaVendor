@@ -88,6 +88,8 @@ TEMPLATE_LIST_TEST_CASE("BLAS level1 real and complex vectors", "[integr][blas][
         // iamax must return 0 for an empty (zero-extent) vector on every backend.
         auto xEmpty = alpaka::onHost::allocUnified<Scalar>(device, 0u);
         auto iamaxEmptyResult = alpaka::onHost::allocUnified<int>(device, 1u);
+        // Poison the result so the n == 0 check cannot pass by reading uninitialized memory.
+        iamaxEmptyResult.data()[0] = 42;
         alpaka::blas::onHost::iamax(queue, xEmpty, iamaxEmptyResult, options);
         alpaka::onHost::wait(queue);
         CHECK(iamaxEmptyResult.data()[0] == 0);
