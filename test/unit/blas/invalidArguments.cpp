@@ -4,11 +4,10 @@
  */
 
 #include <alpakaTest/deviceHelper.hpp>
+#include <cstdint>
 
 #include "alpaka/blas.hpp"
 #include "test.hpp"
-
-#include <cstdint>
 
 using namespace alpakaVendor::test;
 
@@ -73,8 +72,8 @@ TEMPLATE_LIST_TEST_CASE(
         CHECK_THROWS_AS(alpaka::blas::onHost::iamax(queue, x, nullResult), std::invalid_argument);
 
         // The result element type is part of the contract: nrm2/asum expect the real type and dot the scalar type.
-        // The backend dispatch is guarded by an `if constexpr` on the result element type, so a mismatch is rejected at
-        // runtime before dispatch and never instantiates an incompatible vendor call.
+        // The backend dispatch is guarded by an `if constexpr` on the result element type, so a mismatch is rejected
+        // at runtime before dispatch and never instantiates an incompatible vendor call.
         auto doubleResult1 = alpaka::onHost::allocUnified<double>(device, 1u);
         CHECK_THROWS_AS(alpaka::blas::onHost::nrm2(queue, x, doubleResult1), std::invalid_argument);
         CHECK_THROWS_AS(alpaka::blas::onHost::asum(queue, x, doubleResult1), std::invalid_argument);

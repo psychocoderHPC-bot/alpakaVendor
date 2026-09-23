@@ -5,10 +5,10 @@
 
 #pragma once
 
+#include <cstdint>
+
 #include "alpaka/blas/internal/api/blas.hpp"
 #include "alpaka/blas/internal/scaleTriangle.hpp"
-
-#include <cstdint>
 
 namespace alpaka::blas::onHost
 {
