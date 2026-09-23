@@ -285,10 +285,10 @@ namespace alpaka::blas::internal
      * Validate a single-element result buffer used by Level-1 reductions.
      *
      * The check is host-only and never dereferences the buffer, so it is safe for host, device, and unified memory.
-     * It rejects empty/multi-element buffers and null data pointers. The result element type is a separate,
-     * compile-time property: callers guard the backend dispatch with ``if constexpr`` on that type (see the
-     * Level-1 wrappers), so a mismatched type never instantiates an incompatible backend call and instead raises
-     * ``std::invalid_argument`` at runtime before dispatch.
+     * It rejects empty/multi-element buffers and null data pointers. The result element type is a separate property
+     * that this function does not check: the public Level-1 wrappers enforce it via their ``if constexpr`` dispatch
+     * guard and raise ``std::invalid_argument`` at runtime for a mismatched result type before any backend call.
+     * For ``iamax`` the required result element type is a 32-bit signed integer.
      */
     template<typename T_X, typename T_Result>
     inline void validateScalarResult(T_X const&, T_Result const& result, char const* what)

@@ -8,6 +8,8 @@
 #include "alpaka/blas/internal/api/blas.hpp"
 #include "alpaka/blas/internal/scaleTriangle.hpp"
 
+#include <cstdint>
+
 namespace alpaka::blas::onHost
 {
     /**
@@ -255,12 +257,15 @@ namespace alpaka::blas::onHost
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(x)>>();
         internal::validateWritable<ALPAKA_TYPEOF(result)>();
         internal::validateScalarResult(x, result, "iamax");
-        // The index type is int on the host, CUDA and HIP paths; oneMKL writes a wider (std::int64_t) index, which is
-        // tracked separately in issue #19. Accept any integral result element here instead of forcing an exact int.
-        if constexpr(std::integral<internal::Value_t<ALPAKA_TYPEOF(result)>>)
+        // The result element type must be exactly a 32-bit signed integer: the host backend writes through
+        // ``int``, CUDA/HIP reinterpret_cast the result pointer to ``int*`` and write 4 bytes, and oneMKL has an
+        // int32 overload for an int result. Accepting a narrower or wider integral type would overflow the buffer or
+        // leave high bytes indeterminate. The wider oneMKL result width is tracked in issue #19.
+        using R = internal::Value_t<ALPAKA_TYPEOF(result)>;
+        if constexpr(std::same_as<R, std::int32_t>)
             internal::IamaxFn::call(queue, x, result, options);
         else
-            throw std::invalid_argument("iamax requires an integral result buffer.");
+            throw std::invalid_argument("iamax requires a 32-bit signed integer result buffer.");
     }
 
     /**

@@ -8,6 +8,8 @@
 #include "alpaka/blas.hpp"
 #include "test.hpp"
 
+#include <cstdint>
+
 using namespace alpakaVendor::test;
 
 // Whether the public dotc entry forms for the given argument types. Expressing the call through a variable-template
@@ -79,10 +81,23 @@ TEMPLATE_LIST_TEST_CASE(
         CHECK_THROWS_AS(alpaka::blas::onHost::dot(queue, x, y4, doubleResult1), std::invalid_argument);
         auto intResult1 = alpaka::onHost::allocUnified<int>(device, 1u);
         CHECK_THROWS_AS(alpaka::blas::onHost::nrm2(queue, x, intResult1), std::invalid_argument);
-        // iamax stores a BLAS index; an integral result element is accepted (int on host/CUDA/HIP, a wider oneMKL
-        // index is tracked in issue #19), but a floating-point result buffer is rejected before dispatch.
+        // iamax requires exactly a 32-bit signed integer result element. The host backend writes through `int`,
+        // CUDA/HIP reinterpret the result pointer as `int*`, and oneMKL has an int32 overload, so any other element
+        // width (narrow or wide) or a floating-point type is rejected at runtime before dispatch. The wider oneMKL
+        // result width is tracked in issue #19.
         auto floatResult1 = alpaka::onHost::allocUnified<float>(device, 1u);
         CHECK_THROWS_AS(alpaka::blas::onHost::iamax(queue, x, floatResult1), std::invalid_argument);
+        auto int8Result1 = alpaka::onHost::allocUnified<std::int8_t>(device, 1u);
+        CHECK_THROWS_AS(alpaka::blas::onHost::iamax(queue, x, int8Result1), std::invalid_argument);
+        auto int64Result1 = alpaka::onHost::allocUnified<std::int64_t>(device, 1u);
+        CHECK_THROWS_AS(alpaka::blas::onHost::iamax(queue, x, int64Result1), std::invalid_argument);
+
+        // A complex result view for nrm2/asum (which produce the real type) is likewise rejected before dispatch.
+        using Complex = alpaka::math::Complex<float>;
+        auto zx = alpaka::onHost::allocUnified<Complex>(device, 4u);
+        auto complexResult1 = alpaka::onHost::allocUnified<Complex>(device, 1u);
+        CHECK_THROWS_AS(alpaka::blas::onHost::nrm2(queue, zx, complexResult1), std::invalid_argument);
+        CHECK_THROWS_AS(alpaka::blas::onHost::asum(queue, zx, complexResult1), std::invalid_argument);
 
         CHECK_THROWS_AS(alpaka::blas::onHost::gemv(queue, 1.0f, A, x, 0.0f, y), std::invalid_argument);
 

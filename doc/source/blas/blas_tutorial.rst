@@ -55,14 +55,14 @@ pointer, and its element type must match the routine's result type:
 
 - ``dot`` writes the vector scalar type (for complex input this is the complex scalar);
 - ``nrm2`` and ``asum`` write the real type (``float`` for a complex float input);
-- ``iamax`` writes an integral index (``int`` on host, CUDA, and HIP; the oneMKL result-width mismatch is tracked in
-  issue #19).
+- ``iamax`` writes a 32-bit signed integer (``int``); the wider oneMKL result width is tracked in issue #19.
 
 If any of these do not hold the wrapper raises ``std::invalid_argument`` before touching a backend. The result is
 written asynchronously, so call ``queue.wait()`` before reading it. On CUDA and HIP the reduction runs with the vendor
 handle in device pointer mode, therefore the result buffer must be device-accessible (unified memory or a device
-buffer); on SYCL the USM result pointer must also be device-accessible (shared/unified or USM device). Copy it back to
-the host after the wait if needed.
+buffer); on SYCL the oneMKL ``iamax`` accesses the result from a ``host_task``, so the ``iamax`` result view must be
+host-accessible (shared/unified) until issue #18/#19 are resolved, while the other reductions must be device-accessible
+(shared/unified or USM device). Copy it back to the host after the wait if needed.
 
 Step 3: GEMV with and without transpose
 ---------------------------------------
