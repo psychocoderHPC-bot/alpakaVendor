@@ -98,9 +98,15 @@ stored diagonal should be read at all.
 
 In this example:
 
-- ``Side::left`` means ``op(A) * X = B``
-- ``lower(triangular)`` says only the lower half matters and sets ``Triangle::lower``
-- ``unitDiag(...)`` says the diagonal is implicitly one and sets ``Diagonal::unit``
+- ``Side::left`` means ``op(A) * X = alpha * B``; ``Side::right`` would mean ``X * op(A) = alpha * B``
+- ``lower(triangular)`` says only the lower half matters and sets ``Triangle::lower``; ``upper(A)`` or ``lower(A)`` is
+  mandatory and a matrix without either annotation is rejected with ``std::invalid_argument`` at runtime
+- ``unitDiag(...)`` says the diagonal is implicitly one and sets ``Diagonal::unit``; the stored diagonal values are
+  ignored, while ``nonUnitDiag(...)`` reads the stored diagonal instead
+- ``op(A)`` is selected by ``A``, ``transposed(A)``, or ``conjTransposed(A)``, so the transposed and conjugate-transposed
+  combinations are available without copying ``A``
+- ``A`` must be square, and ``B`` must match ``A.rows`` for ``Side::left`` or ``A.cols`` for ``Side::right`` after
+  applying the transpose annotation
 
 The exact enum values and the default of every annotation are listed in :ref:`blas-annotations-reference` on the BLAS
 index page.
