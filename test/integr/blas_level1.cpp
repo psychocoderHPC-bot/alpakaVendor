@@ -84,6 +84,15 @@ TEMPLATE_LIST_TEST_CASE("BLAS level1 real and complex vectors", "[integr][blas][
         CHECK(nrm2Result.data()[0] == Catch::Approx(blas::nrm2Ref(x.data(), n)).epsilon(1e-4));
         CHECK(asumResult.data()[0] == Catch::Approx(blas::asumRef(x.data(), n)).epsilon(1e-4));
         CHECK(iamaxResult.data()[0] == blas::iamaxRef(x.data(), n));
+
+        // iamax must return 0 for an empty (zero-extent) vector on every backend.
+        auto xEmpty = alpaka::onHost::allocUnified<Scalar>(device, 0u);
+        auto iamaxEmptyResult = alpaka::onHost::allocUnified<int>(device, 1u);
+        // Poison the result so the n == 0 check cannot pass by reading uninitialized memory.
+        iamaxEmptyResult.data()[0] = 42;
+        alpaka::blas::onHost::iamax(queue, xEmpty, iamaxEmptyResult, options);
+        alpaka::onHost::wait(queue);
+        CHECK(iamaxEmptyResult.data()[0] == 0);
     }
 }
 
@@ -361,5 +370,35 @@ TEMPLATE_LIST_TEST_CASE(
             CHECK(xDesc.n == static_cast<std::int64_t>(hugeN));
             CHECK(yDesc.n == static_cast<std::int64_t>(hugeN));
         }
+    }
+}
+
+TEMPLATE_LIST_TEST_CASE(
+    "BLAS iamax 1-based conversion honors blocking queues",
+    "[integr][blas][level1][blocking]",
+    TestBackends)
+{
+    auto deviceExec = getDeviceExecutorOrSkipTest(TestType::makeDict());
+    auto device = getDevice(deviceExec);
+    if constexpr(!isBlasBackendEnabledForDevice(device))
+    {
+        SKIP("No BLAS backend enabled for this alpaka API.");
+    }
+    else
+    {
+        // A blocking queue guarantees that the 1-based conversion kernel is complete when the enqueue call
+        // returns, so the result is host-visible without an explicit wait().
+        auto queue = device.makeQueue(alpaka::queueKind::blocking);
+        constexpr uint32_t n = 5u;
+
+        auto x = alpaka::onHost::allocUnified<float>(device, n);
+        auto iamaxResult = alpaka::onHost::allocUnified<int>(device, 1u);
+
+        for(uint32_t i = 0; i < n; ++i)
+            x.data()[i] = static_cast<float>(i + 1);
+
+        alpaka::blas::onHost::iamax(queue, x, iamaxResult);
+        // intentionally no alpaka::onHost::wait(queue): the blocking queue semantics must already guarantee it.
+        CHECK(iamaxResult.data()[0] == blas::iamaxRef(x.data(), n));
     }
 }

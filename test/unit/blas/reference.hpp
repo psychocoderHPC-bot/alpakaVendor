@@ -248,6 +248,9 @@ namespace alpakaVendor::test::blas
     template<typename T>
     inline int iamaxRef(T const* x, std::size_t n)
     {
+        // netlib BLAS: iamax returns 0 for n <= 0, otherwise a 1-based index.
+        if(n == 0)
+            return 0;
         using Real = alpaka::blas::Real_t<T>;
         Real best = -1;
         int idx = 1;

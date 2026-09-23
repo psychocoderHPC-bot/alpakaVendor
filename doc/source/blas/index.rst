@@ -22,6 +22,9 @@ What is available today?
 - **Level 2:** ``gemv``
 - **Level 3:** ``gemm``, ``stridedBatchedGemm``, ``syrk``, ``herk``, ``trsm``
 
+``iamax`` returns a 1-based index of the entry with the largest absolute value; an empty vector (n == 0)
+returns 0.
+
 How to read the BLAS views
 --------------------------
 

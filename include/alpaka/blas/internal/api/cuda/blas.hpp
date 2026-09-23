@@ -8,6 +8,7 @@
 #include <type_traits>
 
 #include "alpaka/blas/internal/api/config.hpp"
+#include "alpaka/blas/internal/api/iamaxKernel.hpp"
 
 #if ALPAKAV_DEP_CUBLAS && ALPAKAV_HAS_CUBLAS
 namespace alpaka::blas::internal
@@ -670,6 +671,13 @@ namespace alpaka::blas::internal
                             reinterpret_cast<int*>(resultPtr)),
                         "cublasIzamax");
             });
+        // cuBLAS already returns a 1-based index for n > 0. Enforce 0 for n <= 0 independently of the vendor in a
+        // regular alpaka kernel on the same queue, preserving sequencing and queue-kind semantics (e.g. blocking).
+        queue.enqueue(
+            alpaka::onHost::ThreadSpec{1u, 1u},
+            IamaxZeroForEmptyKernel{},
+            reinterpret_cast<int*>(resultPtr),
+            static_cast<int>(xd.n));
     }
 
     void alpakaFnDispatch(

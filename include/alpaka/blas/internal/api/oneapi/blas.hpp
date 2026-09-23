@@ -381,7 +381,16 @@ namespace alpaka::blas::internal
                     [&](sycl::handler& handler)
                     {
                         handler.depends_on(event);
-                        handler.host_task([=]() { ++resultPtr[0]; });
+                        // oneMKL Iamax returns a 0-based index. Convert to the documented 1-based index and
+                        // write 0 for an empty vector (n == 0), matching netlib BLAS.
+                        handler.host_task(
+                            [=]()
+                            {
+                                if(xd.n > 0)
+                                    ++resultPtr[0];
+                                else
+                                    resultPtr[0] = 0;
+                            });
                     });
             });
     }

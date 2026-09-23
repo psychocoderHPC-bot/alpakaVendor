@@ -61,7 +61,10 @@ namespace alpaka::blas::internal
 
         static int iamax(int n, float const* x, int incx)
         {
-            return cblas_isamax(n, x, incx) + 1;
+            // netlib BLAS: n <= 0 yields 0, otherwise a 1-based index. cblas_isamax returns 0 for n <= 0,
+            // so the +1 is skipped to keep the documented contract "1-based index, 0 if n == 0".
+            auto const result = cblas_isamax(n, x, incx);
+            return n > 0 ? result + 1 : result;
         }
     };
 
@@ -110,7 +113,10 @@ namespace alpaka::blas::internal
 
         static int iamax(int n, double const* x, int incx)
         {
-            return cblas_idamax(n, x, incx) + 1;
+            // netlib BLAS: n <= 0 yields 0, otherwise a 1-based index. cblas_idamax returns 0 for n <= 0,
+            // so the +1 is skipped to keep the documented contract "1-based index, 0 if n == 0".
+            auto const result = cblas_idamax(n, x, incx);
+            return n > 0 ? result + 1 : result;
         }
     };
 
@@ -165,7 +171,10 @@ namespace alpaka::blas::internal
 
         static int iamax(int n, T const* x, int incx)
         {
-            return cblas_icamax(n, x, incx) + 1;
+            // netlib BLAS: n <= 0 yields 0, otherwise a 1-based index. cblas_icamax returns 0 for n <= 0,
+            // so the +1 is skipped to keep the documented contract "1-based index, 0 if n == 0".
+            auto const result = cblas_icamax(n, x, incx);
+            return n > 0 ? result + 1 : result;
         }
     };
 
@@ -220,7 +229,10 @@ namespace alpaka::blas::internal
 
         static int iamax(int n, T const* x, int incx)
         {
-            return cblas_izamax(n, x, incx) + 1;
+            // netlib BLAS: n <= 0 yields 0, otherwise a 1-based index. cblas_izamax returns 0 for n <= 0,
+            // so the +1 is skipped to keep the documented contract "1-based index, 0 if n == 0".
+            auto const result = cblas_izamax(n, x, incx);
+            return n > 0 ? result + 1 : result;
         }
     };
 
