@@ -6,8 +6,9 @@ This page is the practical tour of the BLAS wrapper. Every snippet below comes f
 
 .. note::
 
-   All routines run asynchronously on the alpaka queue. Call ``queue.wait()`` before reading any output, and keep every
-   operand view and result buffer alive (and mutable where it is written) until the queue has been waited.
+   All routines are enqueued on the alpaka queue. On a default (non-blocking) queue they run asynchronously, whereas a
+   blocking queue returns results synchronously. Call ``alpaka::onHost::wait(queue)`` before reading any output, and
+   keep every operand view and result buffer alive (and mutable where it is written) until the queue has been waited.
 
 Step 1: Select a backend and create a queue
 -------------------------------------------
