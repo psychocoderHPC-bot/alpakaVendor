@@ -44,6 +44,11 @@ namespace alpaka::blas::internal
             return cblas_sdot(n, x, incx, y, incy);
         }
 
+        static float dotc(int n, float const* x, int incx, float const* y, int incy)
+        {
+            return cblas_sdot(n, x, incx, y, incy);
+        }
+
         static float nrm2(int n, float const* x, int incx)
         {
             return cblas_snrm2(n, x, incx);
@@ -84,6 +89,11 @@ namespace alpaka::blas::internal
         }
 
         static double dot(int n, double const* x, int incx, double const* y, int incy)
+        {
+            return cblas_ddot(n, x, incx, y, incy);
+        }
+
+        static double dotc(int n, double const* x, int incx, double const* y, int incy)
         {
             return cblas_ddot(n, x, incx, y, incy);
         }
@@ -136,6 +146,13 @@ namespace alpaka::blas::internal
             return result;
         }
 
+        static T dotc(int n, T const* x, int incx, T const* y, int incy)
+        {
+            T result{};
+            cblas_cdotc_sub(n, x, incx, y, incy, &result);
+            return result;
+        }
+
         static float nrm2(int n, T const* x, int incx)
         {
             return cblas_scnrm2(n, x, incx);
@@ -181,6 +198,13 @@ namespace alpaka::blas::internal
         {
             T result{};
             cblas_zdotu_sub(n, x, incx, y, incy, &result);
+            return result;
+        }
+
+        static T dotc(int n, T const* x, int incx, T const* y, int incy)
+        {
+            T result{};
+            cblas_zdotc_sub(n, x, incx, y, incy, &result);
             return result;
         }
 
@@ -337,6 +361,34 @@ namespace alpaka::blas::internal
                     int(xd.inc),
                     static_cast<T const*>(yd.constPtr),
                     int(yd.inc));
+            });
+    }
+
+    template<alpaka::concepts::DeviceKind T_DeviceKind>
+    void alpakaFnDispatch(
+        DotcFn::Spec<alpaka::api::Host, T_DeviceKind>,
+        auto&& queue,
+        auto const& x,
+        auto const& y,
+        auto& result,
+        [[maybe_unused]] Options options)
+    {
+        using Scalar = std::remove_cv_t<Value_t<ALPAKA_TYPEOF(x)>>;
+        auto const xd = makeVectorDescriptor(x);
+        auto const yd = makeVectorDescriptor(y);
+        auto const nInt = checkedCast<int>(xd.n, "dotc n");
+        auto const incxInt = checkedCast<int>(xd.inc, "dotc incx");
+        auto const incyInt = checkedCast<int>(yd.inc, "dotc incy");
+        auto* resultPtr = alpaka::onHost::data(getView(result));
+        queue.enqueueNativeFn(
+            [=](auto)
+            {
+                resultPtr[0] = OpenBlas<Scalar>::dotc(
+                    nInt,
+                    static_cast<Scalar const*>(xd.constPtr),
+                    incxInt,
+                    static_cast<Scalar const*>(yd.constPtr),
+                    incyInt);
             });
     }
 

@@ -18,7 +18,7 @@ Topics
 What is available today?
 ------------------------
 
-- **Level 1:** ``copy``, ``swap``, ``scal``, ``axpy``, ``dot``, ``nrm2``, ``asum``, ``iamax``
+- **Level 1:** ``copy``, ``swap``, ``scal``, ``axpy``, ``dot``, ``dotc``, ``nrm2``, ``asum``, ``iamax``
 - **Level 2:** ``gemv``
 - **Level 3:** ``gemm``, ``stridedBatchedGemm``, ``trsm``
 
@@ -34,6 +34,27 @@ The wrappers work directly with alpaka mdspan-like buffers and views:
 As in alpaka, the last index is the contiguous one. For a matrix ``A(rows, cols)``, ``A[{r, c}]`` means row ``r`` and
 column ``c``. Row and batch byte pitches must be exact multiples of the element size; non-multiple pitches throw
 ``std::invalid_argument``.
+
+Routine reference
+-----------------
+
+.. list-table:: BLAS routines
+   :header-rows: 1
+   :widths: 20 45 35
+
+   * - Routine
+     - Operation
+     - Scalar types
+   * - ``dot``
+     - ``result[0] = sum_i x[i] * y[i]``
+     - ``float``, ``double``, ``alpaka::math::Complex<float>``, ``alpaka::math::Complex<double>``
+   * - ``dotc``
+     - ``result[0] = sum_i conj(x[i]) * y[i]`` (first operand conjugated)
+     - ``float``, ``double``, ``alpaka::math::Complex<float>``, ``alpaka::math::Complex<double>``
+
+``dotc`` maps to the vendor conjugate-dot-product routines (``*dotc`` elsewhere) and, like ``dot``, is
+available on the OpenBLAS/CBLAS host, cuBLAS, rocBLAS, and oneMKL host paths. It is not provided for OpenMP or the
+generic native alpaka CPU queues.
 
 Quick example
 -------------

@@ -30,11 +30,16 @@ What this covers in one go:
 - ``scal(queue, alpha, x)``
 - ``axpy(queue, alpha, x, y)``
 - ``dot(queue, x, y, result)``
+- ``dotc(queue, x, y, result)``
 - ``nrm2(queue, x, result)``
 - ``asum(queue, x, result)``
 - ``iamax(queue, x, result)``
 
 ``iamax`` follows the BLAS convention and returns a **1-based** index.
+
+Alongside ``dot`` the tutorial computes ``dotc``, which is identical for the real-valued data used there and therefore
+also yields ``28.0`` in ``dotcResult``. The difference shows up only for complex operands: ``dotc`` conjugates the
+first operand, i.e. ``result[0] = sum_i conj(x[i]) * y[i]``, while ``dot`` multiplies the operands as stored.
 
 Step 3: GEMV with and without transpose
 ---------------------------------------

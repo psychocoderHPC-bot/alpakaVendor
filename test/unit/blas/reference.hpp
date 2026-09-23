@@ -115,6 +115,15 @@ namespace alpakaVendor::test::blas
     }
 
     template<typename T>
+    inline T dotcRef(T const* x, T const* y, std::size_t n)
+    {
+        T sum{};
+        for(std::size_t i = 0; i < n; ++i)
+            sum += conj(x[i]) * y[i];
+        return sum;
+    }
+
+    template<typename T>
     inline auto nrm2Ref(T const* x, std::size_t n)
     {
         using Real = alpaka::blas::Real_t<T>;
