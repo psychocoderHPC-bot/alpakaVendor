@@ -133,9 +133,11 @@ TEMPLATE_LIST_TEST_CASE("Tutorial: BLAS walkthrough", "[doc][tutorial][blas]", T
         C[alpaka::Vec<uint32_t, 2u>{1u, 0u}] = 0.0f;
         C[alpaka::Vec<uint32_t, 2u>{1u, 1u}] = 0.0f;
 
+        // Options are optional backend hints. The field values below are the defaults from
+        // alpaka::blas::Options; the host backends accept but ignore all options.
         alpaka::blas::Options options{
-            .precision = alpaka::blas::Precision::backendDefault,
-            .algorithm = alpaka::blas::Algorithm::deterministic};
+            .precision = alpaka::blas::Precision::exact,
+            .algorithm = alpaka::blas::Algorithm::backendDefault};
         alpaka::blas::onHost::gemm(queue, 1.0f, A, B, 0.0f, C, options);
         alpaka::onHost::wait(queue);
 

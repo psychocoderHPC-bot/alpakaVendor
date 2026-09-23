@@ -179,3 +179,54 @@ handling is:
      - ``exact`` requests oneMKL standard compute mode for GEMM, batched GEMM, and TRSM.
      - ``deterministic`` requests standard compute mode. ``fastest`` requests oneMKL alternate compute mode for
        single-precision real and complex GEMM, batched GEMM, and TRSM paths when oneMKL supports it.
+
+.. -- begin issue-37 Options subsection --
+
+Options
+-------
+
+Every BLAS entry point takes an optional ``alpaka::blas::Options`` argument that carries backend hints. The default
+value is:
+
+.. code-block:: cpp
+
+   namespace alpaka::blas
+   {
+       enum class Precision
+       {
+           exact,
+           backendDefault
+       };
+
+       enum class Algorithm
+       {
+           backendDefault,
+           deterministic,
+           fastest
+       };
+
+       struct Options
+       {
+           Precision precision = Precision::exact; ///< Preferred math mode when the backend supports one.
+           Algorithm algorithm = Algorithm::backendDefault; ///< Preferred backend algorithm, if selectable.
+       };
+   }
+
+The two fields are therefore:
+
+- ``precision`` -- ``Precision::exact`` by default. ``exact`` asks for the precise scalar type requested by the user,
+  while ``Precision::backendDefault`` lets the backend choose its own default math mode.
+- ``algorithm`` -- ``Algorithm::backendDefault`` by default. ``Algorithm::deterministic`` and
+  ``Algorithm::fastest`` let a backend trade reproducibility against speed when it exposes such a knob.
+
+Options are best-effort hints: they are never required for a call to be valid, and a backend that has no matching knob
+simply ignores the field.
+
+Host backends
+~~~~~~~~~~~~~
+
+The OpenBLAS / CBLAS host backends **accept but ignore all options**. The host dispatch functions take the ``Options``
+argument to keep the public signature uniform and mark it ``[[maybe_unused]]``; neither ``precision`` nor ``algorithm``
+is read. Passing the defaults, ``backendDefault``, or any other combination therefore has no effect on host execution.
+
+.. -- end issue-37 Options subsection --
