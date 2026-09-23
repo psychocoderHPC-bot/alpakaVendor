@@ -56,6 +56,9 @@ Routine reference
 available on the OpenBLAS/CBLAS host, cuBLAS, rocBLAS, and oneMKL host paths. It is not provided for OpenMP or the
 generic native alpaka CPU queues.
 
+Views passed to the 2D and 3D BLAS routines must be row-major dense: the column stride must be exactly 1 and the leading
+dimension (the row stride) must be at least ``cols``. Violations raise ``std::invalid_argument``.
+
 Quick example
 -------------
 

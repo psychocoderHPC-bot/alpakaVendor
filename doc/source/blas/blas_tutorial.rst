@@ -55,6 +55,9 @@ its transpose, or, where the selected backend supports it, its conjugate transpo
 The first call uses ``A`` as-is. The second uses ``transposed(A)`` so the same buffer can be read as a ``3 x 2``
 matrix without moving data.
 
+``A`` must be row-major dense: the column stride must be exactly 1 and the leading dimension (the row stride) must be at
+least the number of columns, otherwise ``std::invalid_argument`` is thrown.
+
 Step 4: GEMM and transpose annotations
 --------------------------------------
 
@@ -64,6 +67,9 @@ Step 4: GEMM and transpose annotations
 
 The first half of the example is the plain real-valued case. The second half shows ``conjTransposed(H)`` on a complex
 matrix.
+
+As for all 2D/3D BLAS routines here, the matrices must be row-major dense with column stride 1 and leading dimension
+(row stride) at least ``cols``, otherwise ``std::invalid_argument`` is thrown.
 
 .. literalinclude:: ../../../doc/code/tutorial_blas.cpp
    :language: C++
@@ -124,6 +130,9 @@ to every batch.
    :end-before: //! [blas-tutorial-batched-gemm]
 
 That is often enough for small batched dense kernels without dropping down to vendor-specific APIs.
+
+Each batch view must be row-major dense with column stride 1 and leading dimension (row stride) at least ``cols``, otherwise
+``std::invalid_argument`` is thrown.
 
 Complete example
 ----------------
