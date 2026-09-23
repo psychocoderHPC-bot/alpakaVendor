@@ -10,6 +10,14 @@
 namespace alpaka::blas::onHost
 {
     /**
+     * @note All routines in this namespace execute asynchronously on the supplied alpaka queue. Wait for the queue
+     *       (for example with ``queue.wait()``) before reading any output. Operand views and the result buffer must
+     *       stay alive and be mutable until the enqueued work has completed; the wrappers capture the views and data
+     *       pointers when the routine is called. On accelerator backends the single-element result buffer must
+     *       additionally be device-accessible because the scalar result is computed on the device.
+     */
+
+    /**
      * Copy one vector into another.
      *
      * @param queue alpaka queue that defines when the operation executes.
@@ -147,6 +155,9 @@ namespace alpaka::blas::onHost
      * @param x input vector.
      * @param result single-element integer output view that receives the BLAS index.
      * @param options optional backend hints.
+     *
+     * @note The result buffer is written by the enqueued work, so it must outlive the queue wait and, on accelerator
+     *       backends, be device-accessible because the index is computed on the device.
      */
     void iamax(
         auto& queue,

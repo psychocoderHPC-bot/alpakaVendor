@@ -34,6 +34,22 @@ The wrappers work directly with alpaka mdspan-like buffers and views:
 As in alpaka, the last index is the contiguous one. For a matrix ``A(rows, cols)``, ``A[{r, c}]`` means row ``r`` and
 column ``c``.
 
+Queues and lifetimes
+--------------------
+
+All ``alpaka::blas`` routines execute **asynchronously**: the call only enqueues work on the alpaka queue and returns
+before the computation has completed.
+
+- Wait for the queue (for example with ``queue.wait()``) before reading any result, including the single-element
+  reduction or result buffers that receive the outputs of ``dot``, ``nrm2``, ``asum``, and ``iamax``.
+- Every operand view (inputs and outputs) and the result buffer must stay alive until the enqueued work has completed.
+  Views written by the backend must also be mutable.
+- The wrappers capture the operand views and data pointers when the routine is called; resizing, reallocating, or
+  destroying a buffer before the queue is waited leaves the enqueued work with dangling pointers.
+
+For accelerator backends the result buffer must additionally be device-accessible, because the backend computes and
+writes the scalar result on the device. Host results are ordinary host-visible buffers.
+
 Quick example
 -------------
 
