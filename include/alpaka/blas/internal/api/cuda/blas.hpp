@@ -671,12 +671,11 @@ namespace alpaka::blas::internal
                             reinterpret_cast<int*>(resultPtr)),
                         "cublasIzamax");
             });
-        // Convert the 0-based cuBLAS result into the documented 1-based index. This is a regular alpaka kernel
-        // on the same queue, hence it is sequenced after the vendor call and inherits the queue-kind semantics
-        // (e.g. blocking queues).
+        // cuBLAS already returns a 1-based index for n > 0. Enforce 0 for n <= 0 independently of the vendor in a
+        // regular alpaka kernel on the same queue, preserving sequencing and queue-kind semantics (e.g. blocking).
         queue.enqueue(
             alpaka::onHost::ThreadSpec{1u, 1u},
-            IamaxToOneBasedKernel{},
+            IamaxZeroForEmptyKernel{},
             reinterpret_cast<int*>(resultPtr),
             static_cast<int>(xd.n));
     }
