@@ -49,6 +49,13 @@ TEMPLATE_LIST_TEST_CASE(
         CHECK_THROWS_AS(
             alpaka::blas::onHost::trsm(queue, alpaka::blas::Side::left, 1.0f, square, rhs),
             std::invalid_argument);
+        // A full-triangle annotation (the default state which upper()/lower() overwrite) must be rejected as well.
+        CHECK_THROWS_AS(
+            alpaka::blas::onHost::trsm(queue, alpaka::blas::Side::left, 1.0f, alpaka::blas::unitDiag(square), rhs),
+            std::invalid_argument);
+        CHECK_THROWS_AS(
+            alpaka::blas::onHost::trsm(queue, alpaka::blas::Side::left, 1.0f, alpaka::blas::transposed(square), rhs),
+            std::invalid_argument);
 
         auto BA = alpaka::onHost::allocUnified<float>(device, alpaka::Vec<uint32_t, 3u>{2u, 2u, 3u});
         auto BB = alpaka::onHost::allocUnified<float>(device, alpaka::Vec<uint32_t, 3u>{3u, 3u, 2u});
@@ -66,3 +73,12 @@ TEMPLATE_LIST_TEST_CASE(
         CHECK_THROWS_AS(alpaka::blas::onHost::gemm(queue, 1.0f, invalidLd, C, 0.0f, C), std::invalid_argument);
     }
 }
+
+#if ALPAKAV_DEP_OPENBLAS && ALPAKAV_HAS_OPENBLAS
+TEST_CASE("blas host uplo mapper rejects Triangle::full", "[unit][blas][invalid]")
+{
+    CHECK(alpaka::blas::internal::toCblasUplo(alpaka::blas::Triangle::upper) == CblasUpper);
+    CHECK(alpaka::blas::internal::toCblasUplo(alpaka::blas::Triangle::lower) == CblasLower);
+    CHECK_THROWS_AS(alpaka::blas::internal::toCblasUplo(alpaka::blas::Triangle::full), std::invalid_argument);
+}
+#endif
