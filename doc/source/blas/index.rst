@@ -34,6 +34,9 @@ The wrappers work directly with alpaka mdspan-like buffers and views:
 As in alpaka, the last index is the contiguous one. For a matrix ``A(rows, cols)``, ``A[{r, c}]`` means row ``r`` and
 column ``c``.
 
+Views passed to the 2D and 3D BLAS routines must be row-major dense: the column stride must be exactly 1 and the leading
+dimension (the row stride) must be at least ``cols``. Violations raise ``std::invalid_argument``.
+
 Quick example
 -------------
 
