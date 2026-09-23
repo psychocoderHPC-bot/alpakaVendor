@@ -1014,6 +1014,7 @@ namespace alpaka::blas::internal
                         "rocblas_ztrsm");
             });
     }
+
     void alpakaFnDispatch(
         HerkFn::Spec<alpaka::api::Hip, alpaka::deviceKind::AmdGpu>,
         auto&& queue,

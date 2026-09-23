@@ -58,8 +58,7 @@ inline constexpr bool syrkCallable = requires(TQueue& queue, TAlpha alpha, TView
 };
 
 // Copy a 2D view's raw row-major buffer (pitches) into a std::vector.
-auto copyRaw(auto const& view, std::size_t rows, std::size_t cols, std::size_t ld)
-    requires requires { view.data(); }
+auto copyRaw(auto const& view, std::size_t rows, std::size_t cols, std::size_t ld) requires requires { view.data(); }
 {
     using T = alpaka::GetValueType_t<std::remove_cvref_t<decltype(view)>>;
     auto const* ptr = view.data();
@@ -107,6 +106,7 @@ template<typename TQueue, typename TAlpha, typename TViewA, typename TBeta, type
 inline constexpr bool herkCallable = requires(TQueue& queue, TAlpha alpha, TViewA& A, TBeta beta, TViewC& C) {
     alpaka::blas::onHost::herk(queue, alpha, A, beta, C);
 };
+
 TEMPLATE_LIST_TEST_CASE("BLAS syrk real symmetric rank-k update", "[integr][blas][rankk][syrk]", TestBackends)
 {
     auto deviceExec = getDeviceExecutorOrSkipTest(TestType::makeDict());
@@ -1202,6 +1202,7 @@ TEMPLATE_LIST_TEST_CASE(
         }
     }
 }
+
 TEMPLATE_LIST_TEST_CASE("BLAS herk complex Hermitian rank-k update", "[integr][blas][rankk][herk]", TestBackends)
 {
     auto deviceExec = getDeviceExecutorOrSkipTest(TestType::makeDict());
@@ -2291,9 +2292,7 @@ TEMPLATE_LIST_TEST_CASE(
         // backend, even though the no-op enqueues no kernel.
         if constexpr(!std::same_as<ALPAKA_TYPEOF(device.getApi()), alpaka::api::OneApi>)
         {
-            CHECK_THROWS_AS(
-                alpaka::blas::onHost::herk(queue, 0.0f, Anormal, 1.0f, upperCbig),
-                std::invalid_argument);
+            CHECK_THROWS_AS(alpaka::blas::onHost::herk(queue, 0.0f, Anormal, 1.0f, upperCbig), std::invalid_argument);
         }
         else
         {

@@ -364,6 +364,7 @@ namespace alpaka::blas::onHost
         internal::validateTrsm(side, A, B);
         internal::TrsmFn::call(queue, side, alpha, A, B, options);
     }
+
     /**
      * Hermitian rank-k update.
      *

@@ -49,6 +49,7 @@ namespace alpaka::blas::internal
             !std::is_const_v<alpaka::GetValueType_t<detail::unannotated_t<T>>>,
             "The BLAS operand must be a writable view (element type must not be const).");
     }
+
     template<typename T>
     constexpr auto asRealMagnitude(T value)
     {

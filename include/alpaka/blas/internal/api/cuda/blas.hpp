@@ -952,6 +952,7 @@ namespace alpaka::blas::internal
                         "cublasZtrsm");
             });
     }
+
     void alpakaFnDispatch(
         HerkFn::Spec<alpaka::api::Cuda, alpaka::deviceKind::NvidiaGpu>,
         auto&& queue,
