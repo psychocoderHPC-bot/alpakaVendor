@@ -93,11 +93,34 @@ namespace alpaka::blas::internal
         return triangle == Triangle::upper ? Triangle::lower : Triangle::upper;
     }
 
-    template<typename T>
-    inline void setPointerMode(rocblas_handle handle)
+    /**
+     * RAII guard that switches a rocBLAS handle to device pointer mode for the duration of a scope and restores the
+     * previously active mode afterwards.
+     *
+     * Reduction routines write their scalar result to a device-accessible pointer, so the handle must be in device
+     * pointer mode while the call runs. Restoring the previous mode keeps the handle consistent even if the backend
+     * call throws, and avoids leaking the device mode into any later use of the same handle.
+     */
+    struct RocblasPointerModeGuard
     {
-        check(rocblas_set_pointer_mode(handle, rocblas_pointer_mode_device), "rocblas_set_pointer_mode");
-    }
+        rocblas_handle handle;
+        rocblas_pointer_mode previous = rocblas_pointer_mode_host;
+
+        explicit RocblasPointerModeGuard(rocblas_handle handleIn) : handle(handleIn)
+        {
+            check(rocblas_get_pointer_mode(handle, &previous), "rocblas_get_pointer_mode");
+            check(rocblas_set_pointer_mode(handle, rocblas_pointer_mode_device), "rocblas_set_pointer_mode");
+        }
+
+        ~RocblasPointerModeGuard()
+        {
+            // Do not throw from a destructor; the previous mode is the best-effort fallback.
+            static_cast<void>(rocblas_set_pointer_mode(handle, previous));
+        }
+
+        RocblasPointerModeGuard(RocblasPointerModeGuard const&) = delete;
+        RocblasPointerModeGuard& operator=(RocblasPointerModeGuard const&) = delete;
+    };
 
     inline void setAtomicsMode(rocblas_handle handle, Options const& options)
     {
@@ -366,7 +389,7 @@ namespace alpaka::blas::internal
             {
                 RocblasHandle rocblas{nativeStream};
                 auto handle = rocblas.handle;
-                setPointerMode<T>(handle);
+                RocblasPointerModeGuard pointerModeGuard{handle};
                 if constexpr(std::same_as<T, float>)
                     check(
                         rocblas_sdot(
@@ -434,7 +457,7 @@ namespace alpaka::blas::internal
             {
                 RocblasHandle rocblas{nativeStream};
                 auto handle = rocblas.handle;
-                setPointerMode<Scalar>(handle);
+                RocblasPointerModeGuard pointerModeGuard{handle};
                 if constexpr(std::same_as<Scalar, float>)
                     check(
                         rocblas_sdot(
@@ -497,7 +520,7 @@ namespace alpaka::blas::internal
             {
                 RocblasHandle rocblas{nativeStream};
                 auto handle = rocblas.handle;
-                setPointerMode<T>(handle);
+                RocblasPointerModeGuard pointerModeGuard{handle};
                 if constexpr(std::same_as<T, float>)
                     check(
                         rocblas_snrm2(handle, xd.n, static_cast<float const*>(xd.constPtr), xd.inc, resultPtr),
@@ -542,7 +565,7 @@ namespace alpaka::blas::internal
             {
                 RocblasHandle rocblas{nativeStream};
                 auto handle = rocblas.handle;
-                setPointerMode<T>(handle);
+                RocblasPointerModeGuard pointerModeGuard{handle};
                 if constexpr(std::same_as<T, float>)
                     check(
                         rocblas_sasum(handle, xd.n, static_cast<float const*>(xd.constPtr), xd.inc, resultPtr),
@@ -587,7 +610,7 @@ namespace alpaka::blas::internal
             {
                 RocblasHandle rocblas{nativeStream};
                 auto handle = rocblas.handle;
-                setPointerMode<T>(handle);
+                RocblasPointerModeGuard pointerModeGuard{handle};
                 if constexpr(std::same_as<T, float>)
                     check(
                         rocblas_isamax(

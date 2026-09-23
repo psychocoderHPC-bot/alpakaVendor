@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <concepts>
 #include <cstdint>
 #include <limits>
 #include <stdexcept>
@@ -280,11 +281,27 @@ namespace alpaka::blas::internal
             throw std::invalid_argument(std::string{what} + " requires matching vector extents.");
     }
 
-    template<typename T_X, typename T_Result>
+    /**
+     * Validate a single-element result buffer used by Level-1 reductions.
+     *
+     * The check is host-only and never dereferences the buffer, so it is safe for host, device, and unified memory.
+     * It rejects empty/multi-element buffers and null data pointers. When ``T_Expected`` is not ``void`` it also
+     * rejects a result buffer whose element type does not match the routine's result type. The type mismatch is a
+     * compile-time property, therefore the error is raised from a discarded ``if constexpr`` branch.
+     */
+    template<typename T_Expected = void, typename T_X, typename T_Result>
     inline void validateScalarResult(T_X const&, T_Result const& result, char const* what)
     {
         if(extents(result).x() != 1u)
             throw std::invalid_argument(std::string{what} + " requires a one-element result buffer.");
+        if(alpaka::onHost::data(getView(result)) == nullptr)
+            throw std::invalid_argument(std::string{what} + " requires a non-null result buffer.");
+        if constexpr(!std::same_as<T_Expected, void>)
+        {
+            if constexpr(!std::same_as<Value_t<T_Result>, T_Expected>)
+                throw std::invalid_argument(
+                    std::string{what} + " requires a result buffer with the routine's result type.");
+        }
     }
 
     template<typename T_A, typename T_B>

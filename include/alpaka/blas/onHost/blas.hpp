@@ -117,7 +117,7 @@ namespace alpaka::blas::onHost
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(x)>>();
         internal::validateWritable<ALPAKA_TYPEOF(result)>();
         internal::validateSameVectorExtent(x, y, "dot");
-        internal::validateScalarResult(x, result, "dot");
+        internal::validateScalarResult<internal::Value_t<ALPAKA_TYPEOF(x)>>(x, result, "dot");
         internal::DotFn::call(queue, x, y, result, options);
     }
 
@@ -191,7 +191,7 @@ namespace alpaka::blas::onHost
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(x)>>();
         internal::validateWritable<ALPAKA_TYPEOF(result)>();
-        internal::validateScalarResult(x, result, "nrm2");
+        internal::validateScalarResult<Real_t<internal::Value_t<ALPAKA_TYPEOF(x)>>>(x, result, "nrm2");
         internal::Nrm2Fn::call(queue, x, result, options);
     }
 
@@ -210,7 +210,7 @@ namespace alpaka::blas::onHost
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(x)>>();
         internal::validateWritable<ALPAKA_TYPEOF(result)>();
-        internal::validateScalarResult(x, result, "asum");
+        internal::validateScalarResult<Real_t<internal::Value_t<ALPAKA_TYPEOF(x)>>>(x, result, "asum");
         internal::AsumFn::call(queue, x, result, options);
     }
 
@@ -239,7 +239,7 @@ namespace alpaka::blas::onHost
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(x)>>();
         internal::validateWritable<ALPAKA_TYPEOF(result)>();
-        internal::validateScalarResult(x, result, "iamax");
+        internal::validateScalarResult<int>(x, result, "iamax");
         internal::IamaxFn::call(queue, x, result, options);
     }
 

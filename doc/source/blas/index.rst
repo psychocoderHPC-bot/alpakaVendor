@@ -83,6 +83,22 @@ the index on the device and a subsequent host task dereferences it
 (``include/alpaka/blas/internal/api/oneapi/blas.hpp``), so the result buffer must also be host-accessible (for example
 shared or host USM). Host results are ordinary host-visible buffers.
 
+Reduction result buffers
+------------------------
+
+``dot``, ``nrm2``, ``asum``, and ``iamax`` write their scalar result into a single-element output view. The wrapper
+validates that contract before dispatching:
+
+- the view must have exactly one element and a non-null data pointer;
+- its element type must match the routine's result type: ``dot`` uses the vector scalar type, ``nrm2`` and ``asum``
+  use the corresponding real type, and ``iamax`` uses an integer index type;
+
+A violation raises ``std::invalid_argument`` on the host before any backend call.
+
+The result is produced asynchronously on the queue. On CUDA and HIP the vendor libraries are placed in *device* pointer
+mode internally for the reduction and the previous pointer mode is restored afterwards, so the result pointer must be
+device-accessible. Use unified memory or copy the result back to the host after ``queue.wait()``.
+
 Quick example
 -------------
 

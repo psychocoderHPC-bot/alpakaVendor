@@ -86,6 +86,35 @@ namespace alpaka::blas::internal
         return CUBLAS_OP_N;
     }
 
+    /**
+     * RAII guard that switches a cuBLAS handle to device pointer mode for the duration of a scope and restores the
+     * previously active mode afterwards.
+     *
+     * Reduction routines write their scalar result to a device-accessible pointer, so the handle must be in device
+     * pointer mode while the call runs. Restoring the previous mode keeps the handle consistent even if the backend
+     * call throws, and avoids leaking the device mode into any later use of the same handle.
+     */
+    struct CublasPointerModeGuard
+    {
+        cublasHandle_t handle;
+        cublasPointerMode_t previous = CUBLAS_POINTER_MODE_HOST;
+
+        explicit CublasPointerModeGuard(cublasHandle_t handleIn) : handle(handleIn)
+        {
+            check(cublasGetPointerMode(handle, &previous), "cublasGetPointerMode");
+            check(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_DEVICE), "cublasSetPointerMode");
+        }
+
+        ~CublasPointerModeGuard()
+        {
+            // Do not throw from a destructor; the previous mode is the best-effort fallback.
+            static_cast<void>(cublasSetPointerMode(handle, previous));
+        }
+
+        CublasPointerModeGuard(CublasPointerModeGuard const&) = delete;
+        CublasPointerModeGuard& operator=(CublasPointerModeGuard const&) = delete;
+    };
+
     template<typename T>
     inline auto toCublasGemvOp(Transpose transpose)
     {
@@ -398,7 +427,7 @@ namespace alpaka::blas::internal
                 CublasHandle cublas{nativeStream};
                 auto handle = cublas.handle;
                 setMathMode<T>(handle, options);
-                check(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_DEVICE), "cublasSetPointerMode");
+                CublasPointerModeGuard pointerModeGuard{handle};
                 if constexpr(std::same_as<T, float>)
                     check(
                         cublasSdot(
@@ -531,7 +560,7 @@ namespace alpaka::blas::internal
                 CublasHandle cublas{nativeStream};
                 auto handle = cublas.handle;
                 setMathMode<T>(handle, options);
-                check(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_DEVICE), "cublasSetPointerMode");
+                CublasPointerModeGuard pointerModeGuard{handle};
                 if constexpr(std::same_as<T, float>)
                     check(
                         cublasSnrm2(handle, int(xd.n), static_cast<float const*>(xd.constPtr), int(xd.inc), resultPtr),
@@ -582,7 +611,7 @@ namespace alpaka::blas::internal
                 CublasHandle cublas{nativeStream};
                 auto handle = cublas.handle;
                 setMathMode<T>(handle, options);
-                check(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_DEVICE), "cublasSetPointerMode");
+                CublasPointerModeGuard pointerModeGuard{handle};
                 if constexpr(std::same_as<T, float>)
                     check(
                         cublasSasum(handle, int(xd.n), static_cast<float const*>(xd.constPtr), int(xd.inc), resultPtr),
@@ -633,7 +662,7 @@ namespace alpaka::blas::internal
                 CublasHandle cublas{nativeStream};
                 auto handle = cublas.handle;
                 setMathMode<T>(handle, options);
-                check(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_DEVICE), "cublasSetPointerMode");
+                CublasPointerModeGuard pointerModeGuard{handle};
                 if constexpr(std::same_as<T, float>)
                     check(
                         cublasIsamax(

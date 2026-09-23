@@ -47,6 +47,21 @@ Alongside ``dot`` the tutorial computes ``dotc``, which is identical for the rea
 also yields ``28.0`` in ``dotcResult``. The difference shows up only for complex operands: ``dotc`` conjugates the
 first operand, i.e. ``result[0] = sum_i conj(x[i]) * y[i]``, while ``dot`` multiplies the operands as stored.
 
+Result buffers
+``````````````
+
+The reductions ``dot``, ``nrm2``, ``asum``, and ``iamax`` expect a single-element result view with a non-null data
+pointer, and its element type must match the routine's result type:
+
+- ``dot`` writes the vector scalar type (for complex input this is the complex scalar);
+- ``nrm2`` and ``asum`` write the real type (``float`` for a complex float input);
+- ``iamax`` writes an integer index.
+
+If any of these do not hold the wrapper raises ``std::invalid_argument`` before touching a backend. The result is
+written asynchronously, so call ``queue.wait()`` before reading it. On CUDA and HIP the reduction runs with the vendor
+handle in device pointer mode, therefore the result buffer must be device-accessible (unified memory or a device
+buffer); copy it back to the host after the wait if needed.
+
 Step 3: GEMV with and without transpose
 ---------------------------------------
 

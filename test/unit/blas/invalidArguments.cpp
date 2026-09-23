@@ -61,6 +61,24 @@ TEMPLATE_LIST_TEST_CASE(
         CHECK_THROWS_AS(alpaka::blas::onHost::nrm2(queue, x, result2), std::invalid_argument);
         CHECK_THROWS_AS(alpaka::blas::onHost::dot(queue, x, y4, result2), std::invalid_argument);
         CHECK_THROWS_AS(alpaka::blas::onHost::dotc(queue, x, y4, result2), std::invalid_argument);
+
+        // A result view with a null data pointer must be rejected before any backend dispatch. The check is a pure
+        // host-side pointer comparison and therefore backend-independent.
+        auto nullResult = alpaka::makeMdSpan(static_cast<float*>(nullptr), alpaka::Vec<uint32_t, 1u>{1u});
+        CHECK_THROWS_AS(alpaka::blas::onHost::dot(queue, x, y4, nullResult), std::invalid_argument);
+        CHECK_THROWS_AS(alpaka::blas::onHost::nrm2(queue, x, nullResult), std::invalid_argument);
+        CHECK_THROWS_AS(alpaka::blas::onHost::asum(queue, x, nullResult), std::invalid_argument);
+        CHECK_THROWS_AS(alpaka::blas::onHost::iamax(queue, x, nullResult), std::invalid_argument);
+
+        // The result element type is part of the contract: nrm2/asum expect the real type, dot the scalar type and
+        // iamax an integer index. These mismatches are statically known and rejected before dispatch.
+        auto doubleResult1 = alpaka::onHost::allocUnified<double>(device, 1u);
+        CHECK_THROWS_AS(alpaka::blas::onHost::nrm2(queue, x, doubleResult1), std::invalid_argument);
+        CHECK_THROWS_AS(alpaka::blas::onHost::asum(queue, x, doubleResult1), std::invalid_argument);
+        CHECK_THROWS_AS(alpaka::blas::onHost::dot(queue, x, y4, doubleResult1), std::invalid_argument);
+        auto intResult1 = alpaka::onHost::allocUnified<int>(device, 1u);
+        CHECK_THROWS_AS(alpaka::blas::onHost::nrm2(queue, x, intResult1), std::invalid_argument);
+
         CHECK_THROWS_AS(alpaka::blas::onHost::gemv(queue, 1.0f, A, x, 0.0f, y), std::invalid_argument);
 
         auto rhs = alpaka::onHost::allocUnified<float>(device, alpaka::Vec<uint32_t, 2u>{2u, 1u});
