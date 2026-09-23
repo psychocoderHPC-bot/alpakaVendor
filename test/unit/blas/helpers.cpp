@@ -4,12 +4,11 @@
  */
 
 #include <alpakaTest/deviceHelper.hpp>
+#include <stdexcept>
+#include <vector>
 
 #include "alpaka/blas.hpp"
 #include "test.hpp"
-
-#include <stdexcept>
-#include <vector>
 
 using namespace alpakaVendor::test;
 
@@ -70,7 +69,7 @@ TEMPLATE_LIST_TEST_CASE(
 {
     // Row pitch of a 3x4 matrix is 6*sizeof(float)+2 bytes and the batched batch pitch is
     // 24*sizeof(float)+4 bytes: both are not multiples of sizeof(float).
-    auto constexpr storage = 128u;
+    constexpr auto storage = 128u;
     auto buffer = std::vector<float>(storage);
 
     auto misalignedRowPitch = alpaka::makeMdSpan(
@@ -83,9 +82,7 @@ TEMPLATE_LIST_TEST_CASE(
         buffer.data(),
         alpaka::Vec<uint32_t, 3u>{2u, 3u, 4u},
         alpaka::Vec<std::size_t, 3u>{24u * sizeof(float) + 4u, 6u * sizeof(float) + 2u, sizeof(float)});
-    CHECK_THROWS_AS(
-        alpaka::blas::internal::makeBatchedMatrixDescriptor(misalignedBatchPitch),
-        std::invalid_argument);
+    CHECK_THROWS_AS(alpaka::blas::internal::makeBatchedMatrixDescriptor(misalignedBatchPitch), std::invalid_argument);
 
     // Element-multiple row pitch but a non-multiple batch pitch: the row pitch check passes and the
     // batch pitch branch must reject the view.
