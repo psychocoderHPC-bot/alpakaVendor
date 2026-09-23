@@ -91,13 +91,15 @@ validates that contract before dispatching:
 
 - the view must have exactly one element and a non-null data pointer;
 - its element type must match the routine's result type: ``dot`` uses the vector scalar type, ``nrm2`` and ``asum``
-  use the corresponding real type, and ``iamax`` uses an integer index type;
+  use the corresponding real type, and ``iamax`` uses an integral index type (``int`` on host, CUDA, and HIP; the oneMKL
+  result-width mismatch is tracked in issue #19);
 
 A violation raises ``std::invalid_argument`` on the host before any backend call.
 
 The result is produced asynchronously on the queue. On CUDA and HIP the vendor libraries are placed in *device* pointer
 mode internally for the reduction and the previous pointer mode is restored afterwards, so the result pointer must be
-device-accessible. Use unified memory or copy the result back to the host after ``queue.wait()``.
+device-accessible. On SYCL the USM result pointer must likewise be device-accessible (shared/unified or USM device).
+Use unified memory or copy the result back to the host after ``queue.wait()``.
 
 Quick example
 -------------
