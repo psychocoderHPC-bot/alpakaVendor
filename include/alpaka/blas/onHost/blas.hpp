@@ -366,6 +366,86 @@ namespace alpaka::blas::onHost
     }
 
     /**
+     * Hermitian rank-k update.
+     *
+     * Computes the selected triangle of ``C = alpha * M * conjTranspose(M) + beta * C`` where ``M = op(A)`` has shape
+     * ``n x k`` and ``C`` is ``n x n``.
+     *
+     * Only complex scalar types (``alpaka::math::Complex<float>`` and ``alpaka::math::Complex<double>``) are
+     * supported.
+     * ``A`` and ``C`` must share the same complex element type.
+     *
+     * ``alpha`` and ``beta`` must be real values convertible to ``Real_t<T>``; complex coefficients are rejected
+     * (including ones with a zero imaginary part). ``A`` is a general dense matrix and may be annotated
+     * ``conjTransposed(A)`` (or left plain); the plain ``transposed(A)`` annotation is rejected because it is not a
+     * standard HERK operation. ``C`` must carry an explicit ``upper(C)`` or ``lower(C)`` selection; the opposite
+     * triangle and any padding are left unchanged. Transpose and unit-diagonal annotations on ``C`` are rejected.
+     *
+     * On an actual update the written diagonal is real (its imaginary part is ignored); a true no-op (``n == 0``, or a
+     * zero product contribution combined with ``beta == 1``) may leave ``C`` unchanged, including its diagonal; no
+     * unconditional diagonal canonicalization is promised.
+     *
+     * Degenerate product contributions (``k == 0``, i.e. an empty rank-k product, or ``alpha == 0``) have
+     * well-defined ``beta`` scaling semantics:
+     *
+     * - ``n == 0`` is a true no-op: no element of ``C`` is read or written.
+     * - the selected triangle is ``beta * C``; with ``beta == 1`` this is a true no-op and with ``beta == 0`` the
+     *   selected triangle is zeroed without reading its previous values.
+     * - for complex ``C`` the diagonal stays real: the real scalar ``beta`` scales the diagonal's real part and its
+     *   imaginary part remains zero, and off-diagonal elements scale in both real and imaginary part.
+     *
+     * The degenerate ``k == 0`` / ``alpha == 0`` path never reads ``A`` and never calls the backend BLAS routine; it
+     * runs a queued triangle-scale kernel on the same queue, so ordering against other queued work is preserved. Its
+     * metadata checks mirror the backend's own herk dispatch (the leading dimension is narrowed through the same
+     * vendor-int width, 32-bit on host/cuda/hip and 64-bit on oneMKL), so an enormously pitched ``C`` is rejected
+     * exactly when the ``k > 0`` path of the same backend would reject it.
+     *
+     * ``A`` and ``C`` must not overlap.
+     *
+     * The real-valued counterpart is the standard BLAS ``syrk`` (real symmetric rank-k).
+     *
+     * @param queue alpaka queue that defines when the work runs.
+     * @param alpha real scalar multiplier for the rank-k product.
+     * @param A input matrix, optionally ``conjTransposed(A)``.
+     * @param beta real scalar multiplier applied to the selected triangle of the existing ``C``.
+     * @param C input/output result matrix, annotated ``upper(C)`` or ``lower(C)``.
+     * @param options optional backend hints.
+     */
+    void herk(
+        auto& queue,
+        auto alpha,
+        concepts::MatrixView auto const& A,
+        auto beta,
+        concepts::MatrixView auto& C,
+        Options options = {})
+        requires(
+            ComplexScalar<std::remove_cv_t<internal::Value_t<ALPAKA_TYPEOF(A)>>>
+            && std::same_as<
+                std::remove_cv_t<internal::Value_t<ALPAKA_TYPEOF(A)>>,
+                std::remove_cv_t<internal::Value_t<ALPAKA_TYPEOF(C)>>>
+            && RealScalar<std::remove_cv_t<decltype(alpha)>> && RealScalar<std::remove_cv_t<decltype(beta)>>
+            && !std::is_const_v<alpaka::GetValueType_t<alpaka::blas::detail::unannotated_t<ALPAKA_TYPEOF(C)>>>)
+    {
+        // Value_t keeps cv-qualifiers; herk dispatches with the unqualified scalar type so a const-element A selects
+        // the same vendor branch as a writable A while the validated writable C stays checked below.
+        using T = std::remove_cv_t<internal::Value_t<ALPAKA_TYPEOF(A)>>;
+        internal::validateWritable<ALPAKA_TYPEOF(C)>();
+        internal::validateHerk(A, C);
+        auto const ad = internal::makeMatrixDescriptor(A);
+        auto const n = internal::getTranspose(A) == Transpose::none ? ad.rows : ad.cols;
+        auto const k = internal::getTranspose(A) == Transpose::none ? ad.cols : ad.rows;
+        if(n == 0)
+            return; // nothing to do, no data access.
+        if(k == 0 || static_cast<Real_t<T>>(alpha) == Real_t<T>{0})
+        {
+            // The empty/zero rank-k product leaves the selected triangle as beta * C; A must not be read.
+            internal::enqueueScaleTriangle(queue, C, beta);
+            return;
+        }
+        internal::HerkFn::call(queue, alpha, A, beta, C, options);
+    }
+
+    /**
      * Symmetric rank-k update.
      *
      * Computes the selected triangle of ``C = alpha * op(A) * transpose(op(A)) + beta * C`` where ``M = op(A)`` has
@@ -373,8 +453,7 @@ namespace alpaka::blas::onHost
      *
      * Only real scalar types (``float``, ``double``) are supported. Complex symmetric rank-k is intentionally not
      * exposed here; the complex Hermitian rank-k counterpart is the standard BLAS ``herk`` routine (``C =
-     * alpha * op(A) * op(A)^H + beta * C`` with ``op(A)^H`` the conjugate transpose), which is not provided by this
-     * library.
+     * alpha * op(A) * op(A)^H + beta * C`` with ``op(A)^H`` the conjugate transpose), provided by this library.
      *
      * ``A`` is a general dense matrix and may be annotated ``transposed(A)`` or ``conjTransposed(A)``. For real
      * operands ``conjTransposed(A)`` is equivalent to ``transposed(A)`` (conjugation is the identity on real types)

@@ -735,6 +735,64 @@ namespace alpaka::blas::internal
 
     template<alpaka::concepts::DeviceKind T_DeviceKind>
     void alpakaFnDispatch(
+        HerkFn::Spec<alpaka::api::Host, T_DeviceKind>,
+        auto&& queue,
+        auto alpha,
+        auto const& A,
+        auto beta,
+        auto& C,
+        [[maybe_unused]] Options options)
+    {
+        // Value_t keeps cv-qualifiers; dispatch on the unqualified scalar so a const-element A (read-only input)
+        // selects the same vendor branch as a writable A.
+        using T = std::remove_cv_t<Value_t<ALPAKA_TYPEOF(A)>>;
+        static_assert(ComplexScalar<T>, "herk supports only complex scalar types.");
+        auto const ad = makeMatrixDescriptor(A);
+        auto const cd = makeMatrixDescriptor(C);
+        // Logical (post-op) extents: op(A) is n x k. The public wrapper intercepts the degenerate n == 0 / k == 0
+        // cases before dispatch, so this routine is only called for a well-defined update (n, k > 0).
+        auto const n = ad.transpose == Transpose::none ? ad.rows : ad.cols;
+        auto const k = ad.transpose == Transpose::none ? ad.cols : ad.rows;
+        auto const nInt = checkedCast<int>(n, "herk n");
+        auto const kInt = checkedCast<int>(k, "herk k");
+        auto const adLd = checkedCast<int>(ad.ld, "herk A ld");
+        auto const cdLd = checkedCast<int>(cd.ld, "herk C ld");
+        queue.enqueueNativeFn(
+            [=](auto)
+            {
+                // cblas_*herk computes C = alpha*op(A)*op(A)^H + beta*C with real alpha/beta, so the public
+                // triangle/operation are forwarded unchanged in row-major order.
+                if constexpr(std::same_as<T, alpaka::math::Complex<float>>)
+                    cblas_cherk(
+                        CblasRowMajor,
+                        toCblasUplo(cd.triangle),
+                        toCblasTranspose(ad.transpose),
+                        nInt,
+                        kInt,
+                        static_cast<float>(alpha),
+                        static_cast<T const*>(ad.constPtr),
+                        adLd,
+                        static_cast<float>(beta),
+                        static_cast<T*>(cd.mutPtr),
+                        cdLd);
+                else
+                    cblas_zherk(
+                        CblasRowMajor,
+                        toCblasUplo(cd.triangle),
+                        toCblasTranspose(ad.transpose),
+                        nInt,
+                        kInt,
+                        static_cast<double>(alpha),
+                        static_cast<T const*>(ad.constPtr),
+                        adLd,
+                        static_cast<double>(beta),
+                        static_cast<T*>(cd.mutPtr),
+                        cdLd);
+            });
+    }
+
+    template<alpaka::concepts::DeviceKind T_DeviceKind>
+    void alpakaFnDispatch(
         SyrkFn::Spec<alpaka::api::Host, T_DeviceKind>,
         auto&& queue,
         auto alpha,

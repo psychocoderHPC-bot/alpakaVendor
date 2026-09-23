@@ -14,10 +14,8 @@ Write once, run on any hardware — CPU, NVIDIA GPU, AMD GPU, or Intel GPU.
 | Module | Status | Description |
 |--------|--------|-------------|
 | **FFT** | Available | 1D/2D/3D C2C, R2C/C2R transforms with batched and in-place support |
-| **BLAS** | Available | BLAS Level-1, GEMV, GEMM, strided batched GEMM, SYRK, and TRSM |
+| **BLAS** | Available | BLAS Level-1, GEMV, GEMM, strided batched GEMM, TRSM, and the rank-k updates SYRK (real symmetric) and HERK (complex Hermitian) |
 | **Parallel Primitives** | Planned | Elementwise transforms, sorting, scans, reductions, and related building blocks |
-
-## Features
 
 - **Portable**: Single codebase targeting CPU (FFTW/OpenBLAS), NVIDIA GPU (cuFFT/cuBLAS), AMD GPU (rocFFT/rocBLAS), and Intel GPU (oneMKL DFT/BLAS) through alpaka's backend abstraction.
 - **Type-safe**: Strong typing for real and complex value types with compile-time dimension selection (1D, 2D, 3D).

@@ -607,6 +607,60 @@ namespace alpaka::blas::internal
 
     template<alpaka::concepts::DeviceKind T_DeviceKind>
     void alpakaFnDispatch(
+        HerkFn::Spec<alpaka::api::OneApi, T_DeviceKind>,
+        auto&& queue,
+        auto alpha,
+        auto const& A,
+        auto beta,
+        auto& C,
+        Options options)
+    {
+        // Value_t keeps cv-qualifiers; dispatch on the unqualified scalar so a const-element A (read-only input)
+        // selects the same vendor branch as a writable A.
+        using T = std::remove_cv_t<Value_t<ALPAKA_TYPEOF(A)>>;
+        static_assert(ComplexScalar<T>, "herk supports only complex scalar types.");
+        auto const ad = makeMatrixDescriptor(A);
+        auto const cd = makeMatrixDescriptor(C);
+        // Logical (post-op) extents: op(A) is n x k. The public wrapper intercepts the degenerate n == 0 / k == 0
+        // cases (including the beta scaling semantics) before dispatch, so this routine is only called for a
+        // well-defined update (n, k > 0).
+        auto const n = ad.transpose == Transpose::none ? ad.rows : ad.cols;
+        auto const k = ad.transpose == Transpose::none ? ad.cols : ad.rows;
+        // oneMKL herk expects real scalars (value_or_pointer<Treal>), so use REAL coefficients, not the complex type.
+        auto const alphaT = static_cast<Real_t<T>>(alpha);
+        auto const betaT = static_cast<Real_t<T>>(beta);
+        // oneMKL alternate compute modes (prefer_alternate) are GEMM-only and must NOT be requested for HERK, so the
+        // options are translated conservatively: a standard/deterministic request maps to compute_mode::standard,
+        // any other request leaves the oneMKL routine default (compute_mode::unset). The mode is always passed
+        // explicitly so options are never silently discarded; the mapping mirrors the GEMM/trsm dispatches' helper
+        // for the supported modes while never requesting the GEMM-only alternate mode.
+        auto const computeMode = options.precision == Precision::exact || options.algorithm == Algorithm::deterministic
+                                     ? oneapi::mkl::blas::compute_mode::standard
+                                     : oneapi::mkl::blas::compute_mode::unset;
+        queue.enqueueNativeFn(
+            [=](sycl::queue q) -> sycl::event
+            {
+                auto deps = std::vector<sycl::event>{q.ext_oneapi_submit_barrier()};
+                // oneMKL is row-major native, so the public triangle/operation are forwarded unchanged.
+                return oneapi::mkl::blas::row_major::herk(
+                    q,
+                    toOneMklUplo(cd.triangle),
+                    toOneMklTranspose(ad.transpose),
+                    n,
+                    k,
+                    alphaT,
+                    oneMklPtr<T>(ad.constPtr),
+                    ad.ld,
+                    betaT,
+                    oneMklPtr<T>(cd.mutPtr),
+                    cd.ld,
+                    computeMode,
+                    deps);
+            });
+    }
+
+    template<alpaka::concepts::DeviceKind T_DeviceKind>
+    void alpakaFnDispatch(
         SyrkFn::Spec<alpaka::api::OneApi, T_DeviceKind>,
         auto&& queue,
         auto alpha,

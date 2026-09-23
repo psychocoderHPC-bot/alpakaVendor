@@ -24,6 +24,7 @@ namespace alpaka::blas::internal
     ALPAKA_FN_SYMBOL(GemmFn);
     ALPAKA_FN_SYMBOL(StridedBatchedGemmFn);
     ALPAKA_FN_SYMBOL(TrsmFn);
+    ALPAKA_FN_SYMBOL(HerkFn);
     ALPAKA_FN_SYMBOL(SyrkFn);
 } // namespace alpaka::blas::internal
 

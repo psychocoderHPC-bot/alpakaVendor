@@ -118,7 +118,21 @@ The view on ``C`` must declare which triangle is updated:
 Only the selected triangle of ``C`` is written; the opposite triangle and any padding are left unchanged. The example
 uses ``upper(C)``, so the diagonal counts as part of the selected triangle and the ``(1, 0)`` entry stays untouched.
 
-Step 7: Strided batched GEMM
+Step 7: Hermitian rank-k update (HERK)
+--------------------------------------
+
+``herk`` is the complex Hermitian counterpart: it computes the selected triangle of
+``C = alpha * op(A) * conjTranspose(op(A)) + beta * C``. The scalar coefficients must be real, ``A`` may be passed
+as-is or as ``conjTransposed(A)`` (plain ``transposed(A)`` is not a standard HERK operation), and ``C`` must be
+annotated ``upper(C)`` or ``lower(C)``. The result is Hermitian with a real diagonal, so on an actual update the
+written diagonal's imaginary part is discarded.
+
+.. literalinclude:: ../../../doc/code/tutorial_blas.cpp
+   :language: C++
+   :start-after: //! [blas-tutorial-herk]
+   :end-before: //! [blas-tutorial-herk]
+
+Step 8: Strided batched GEMM
 ----------------------------
 
 If your data already lives in a ``[batch, row, column]`` view, ``stridedBatchedGemm`` applies the same matrix product

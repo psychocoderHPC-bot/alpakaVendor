@@ -954,6 +954,78 @@ namespace alpaka::blas::internal
     }
 
     void alpakaFnDispatch(
+        HerkFn::Spec<alpaka::api::Cuda, alpaka::deviceKind::NvidiaGpu>,
+        auto&& queue,
+        auto alpha,
+        auto const& A,
+        auto beta,
+        auto& C,
+        Options options)
+    {
+        // Value_t keeps cv-qualifiers; dispatch on the unqualified scalar so a const-element A (read-only input)
+        // selects the same vendor branch as a writable A.
+        using T = std::remove_cv_t<Value_t<ALPAKA_TYPEOF(A)>>;
+        static_assert(ComplexScalar<T>, "herk supports only complex scalar types.");
+        auto const ad = makeMatrixDescriptor(A);
+        auto const cd = makeMatrixDescriptor(C);
+        // Logical (post-op) extents: op(A) is n x k. The public wrapper intercepts the degenerate n == 0 / k == 0
+        // cases before dispatch, so this routine is only called for a well-defined update (n, k > 0).
+        auto const n = ad.transpose == Transpose::none ? ad.rows : ad.cols;
+        auto const k = ad.transpose == Transpose::none ? ad.cols : ad.rows;
+        auto const nInt = checkedCast<int>(n, "herk n");
+        auto const kInt = checkedCast<int>(k, "herk k");
+        auto const adLd = checkedCast<int>(ad.ld, "herk A ld");
+        auto const cdLd = checkedCast<int>(cd.ld, "herk C ld");
+        queue.enqueueNativeFn(
+            [=](cudaStream_t nativeStream)
+            {
+                CublasHandle cublas{nativeStream};
+                auto handle = cublas.handle;
+                setMathMode<T>(handle, options);
+                setAtomicsMode(handle, options);
+                using Real = Real_t<T>;
+                Real alphaT = static_cast<Real>(alpha);
+                Real betaT = static_cast<Real>(beta);
+                // Row-major C = alpha*M*adjoint(M) + beta*C is, seen column-major, D = C^T. cuBLAS herk computes
+                // D = op(B)*op(B)^H, and real alpha/beta avoid conjugating the coefficients. Reinterpreting
+                // row-major A as B = A^T gives: public none (M = A) -> D = A*A^H = B^H*B, so op(B) = conjugate
+                // transpose; public conjTransposed (M = A^H) -> D = A^T*conj(A) = B*B^H, so op(B) = none.
+                auto const colOp = ad.transpose == Transpose::none ? CUBLAS_OP_C : CUBLAS_OP_N;
+                auto const colTriangle = swappedTriangle(cd.triangle);
+                if constexpr(std::same_as<T, alpaka::math::Complex<float>>)
+                    check(
+                        cublasCherk(
+                            handle,
+                            toCublasFill(colTriangle),
+                            colOp,
+                            nInt,
+                            kInt,
+                            &alphaT,
+                            reinterpret_cast<cuComplex const*>(ad.constPtr),
+                            adLd,
+                            &betaT,
+                            reinterpret_cast<cuComplex*>(cd.mutPtr),
+                            cdLd),
+                        "cublasCherk");
+                else
+                    check(
+                        cublasZherk(
+                            handle,
+                            toCublasFill(colTriangle),
+                            colOp,
+                            nInt,
+                            kInt,
+                            &alphaT,
+                            reinterpret_cast<cuDoubleComplex const*>(ad.constPtr),
+                            adLd,
+                            &betaT,
+                            reinterpret_cast<cuDoubleComplex*>(cd.mutPtr),
+                            cdLd),
+                        "cublasZherk");
+            });
+    }
+
+    void alpakaFnDispatch(
         SyrkFn::Spec<alpaka::api::Cuda, alpaka::deviceKind::NvidiaGpu>,
         auto&& queue,
         auto alpha,

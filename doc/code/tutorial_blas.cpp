@@ -196,6 +196,34 @@ TEMPLATE_LIST_TEST_CASE("Tutorial: BLAS walkthrough", "[doc][tutorial][blas]", T
         CHECK(rhsSolve[alpaka::Vec<uint32_t, 2u>{1u, 0u}] == Catch::Approx(-4.0f));
         //! [blas-tutorial-trsm]
 
+        //! [blas-tutorial-herk]
+        // Hermitian rank-k update: C = alpha * A * A^H + beta * C (upper triangle only), complex case.
+        // A is 2x3 with nonzero imaginary parts, C is 2x2. alpha and beta are real.
+        auto herkA = alpaka::onHost::allocUnified<Complex>(device, alpaka::Vec<uint32_t, 2u>{2u, 3u});
+        auto herkC = alpaka::onHost::allocUnified<Complex>(device, alpaka::Vec<uint32_t, 2u>{2u, 2u});
+        herkA[alpaka::Vec<uint32_t, 2u>{0u, 0u}] = Complex{1.0f, 1.0f};
+        herkA[alpaka::Vec<uint32_t, 2u>{0u, 1u}] = Complex{2.0f, 0.0f};
+        herkA[alpaka::Vec<uint32_t, 2u>{0u, 2u}] = Complex{3.0f, -1.0f};
+        herkA[alpaka::Vec<uint32_t, 2u>{1u, 0u}] = Complex{4.0f, 1.0f};
+        herkA[alpaka::Vec<uint32_t, 2u>{1u, 1u}] = Complex{5.0f, 0.0f};
+        herkA[alpaka::Vec<uint32_t, 2u>{1u, 2u}] = Complex{6.0f, 2.0f};
+        herkC[alpaka::Vec<uint32_t, 2u>{0u, 0u}] = Complex{10.0f, 3.0f};
+        herkC[alpaka::Vec<uint32_t, 2u>{0u, 1u}] = Complex{0.0f, 0.0f};
+        herkC[alpaka::Vec<uint32_t, 2u>{1u, 0u}] = Complex{0.0f, 0.0f};
+        herkC[alpaka::Vec<uint32_t, 2u>{1u, 1u}] = Complex{10.0f, -3.0f};
+        auto herkUpperC = alpaka::blas::upper(herkC);
+        alpaka::blas::onHost::herk(queue, 1.0f, herkA, 1.0f, herkUpperC, options);
+        alpaka::onHost::wait(queue);
+        // A*A^H is Hermitian (real diagonal, complex off-diagonal): [[16, 31-9i], [31+9i, 82]].
+        // C = A*A^H + C (upper triangle only); the written diagonal is real (old imaginary part dropped).
+        CHECK(herkC[alpaka::Vec<uint32_t, 2u>{0u, 0u}].real() == Catch::Approx(26.0f));
+        CHECK(herkC[alpaka::Vec<uint32_t, 2u>{0u, 0u}].imag() == Catch::Approx(0.0f).margin(1.0e-5f));
+        CHECK(herkC[alpaka::Vec<uint32_t, 2u>{0u, 1u}].real() == Catch::Approx(31.0f));
+        CHECK(herkC[alpaka::Vec<uint32_t, 2u>{0u, 1u}].imag() == Catch::Approx(-9.0f).margin(1.0e-5f));
+        // Lower triangle unchanged (was 0).
+        CHECK(herkC[alpaka::Vec<uint32_t, 2u>{1u, 0u}] == Complex{0.0f, 0.0f});
+        //! [blas-tutorial-herk]
+
         //! [blas-tutorial-syrk]
         // Symmetric rank-k update: C = alpha * A * A^T + beta * C (upper triangle only).
         // A is 2x3, C is 2x2.
@@ -221,7 +249,6 @@ TEMPLATE_LIST_TEST_CASE("Tutorial: BLAS walkthrough", "[doc][tutorial][blas]", T
         CHECK(syrkC[alpaka::Vec<uint32_t, 2u>{1u, 0u}] == Catch::Approx(0.0f));
         //! [blas-tutorial-syrk]
 
-        //! [blas-tutorial-batched-gemm]
         auto batchA = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 3u>{2u, 2u, 2u});
         auto batchB = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 3u>{2u, 2u, 2u});
         auto batchC = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 3u>{2u, 2u, 2u});

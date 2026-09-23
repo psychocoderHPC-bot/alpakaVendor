@@ -20,7 +20,7 @@ What is available today?
 
 - **Level 1:** ``copy``, ``swap``, ``scal``, ``axpy``, ``dot``, ``dotc``, ``nrm2``, ``asum``, ``iamax``
 - **Level 2:** ``gemv``
-- **Level 3:** ``gemm``, ``stridedBatchedGemm``, ``syrk``, ``trsm``
+- **Level 3:** ``gemm``, ``stridedBatchedGemm``, ``syrk``, ``herk``, ``trsm``
 
 How to read the BLAS views
 --------------------------
@@ -119,6 +119,27 @@ Options for SYRK (what each backend honors):
 - oneAPI/oneMKL: ``Precision::exact`` requests the oneMKL standard compute mode and ``Algorithm::deterministic`` the
   standard mode as well; ``Algorithm::fastest`` requests the oneMKL alternate compute mode for single-precision SYRK
   when oneMKL supports it (best-effort, falling back to the routine default otherwise).
+HERK: Hermitian rank-k update
+-----------------------------
+
+``herk`` computes the selected triangle of
+
+``C = alpha * op(A) * op(A)^H + beta * C``
+
+with ``op(A)`` the as-stored matrix or its conjugate transpose, of shape ``n x k``, and ``C`` ``n x n``; only the
+triangle selected by ``upper(C)`` or ``lower(C)`` is updated. The formula is the complex Hermitian rank-k form: the
+second factor is the conjugate transpose ``op(A)^H``.
+
+- Complex scalar types ``alpaka::math::Complex<float>`` and ``alpaka::math::Complex<double>`` only.
+- ``A`` may be annotated ``conjTransposed(A)`` or left plain; the plain ``transposed(A)`` annotation is rejected
+  because it is not a standard HERK operation.
+- ``alpha`` and ``beta`` must be real values; complex coefficients are rejected.
+- On an actual update the written diagonal is real (its imaginary part is discarded); the opposite triangle and any
+  padding are left unchanged.
+- ``k == 0`` or ``alpha == 0`` produce ``beta * C`` on the selected triangle without reading ``A``; the degenerate
+  path is a queued triangle-scale kernel, so it stays ordered with respect to other work on the same queue.
+- Backends: OpenBLAS/CBLAS host, CUDA/cuBLAS, HIP/rocBLAS, and oneAPI/oneMKL.
+
 
 Backend notes
 -------------

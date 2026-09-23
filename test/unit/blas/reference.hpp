@@ -82,6 +82,56 @@ namespace alpakaVendor::test::blas
         alpaka::unused(cRows, cCols);
     }
 
+    // Complex Hermitian rank-k update: writes the selected triangle of
+    // C = alpha * M * adjoint(M) + beta * C where M = op(A) is n x k and op(A) is
+    // either the stored matrix or its conjugate transpose. The opposite triangle
+    // and padding are left unchanged. On an actual update (alpha * M * adjoint(M)
+    // contributes), the diagonal is real, so any stored imaginary part of the old
+    // diagonal is ignored.
+    template<typename T>
+    inline void herkRef(
+        alpaka::blas::Real_t<T> alpha,
+        T const* a,
+        std::size_t lda,
+        std::size_t aRows,
+        std::size_t aCols,
+        alpaka::blas::Transpose trans,
+        alpaka::blas::Real_t<T> beta,
+        T* c,
+        std::size_t ldc,
+        std::size_t n,
+        alpaka::blas::Triangle triangle)
+    {
+        static_assert(alpaka::blas::ComplexScalar<T>, "herkRef requires a complex scalar type.");
+        using Real = alpaka::blas::Real_t<T>;
+        auto const k = trans == alpaka::blas::Transpose::none ? aCols : aRows;
+        for(std::size_t i = 0; i < n; ++i)
+        {
+            auto const inTri = [triangle](std::size_t r, std::size_t col)
+            { return triangle == alpaka::blas::Triangle::upper ? col >= r : col <= r; };
+            for(std::size_t j = 0; j < n; ++j)
+            {
+                if(!inTri(i, j))
+                    continue;
+                T sum{};
+                for(std::size_t kk = 0; kk < k; ++kk)
+                    // M*adjoint(M): the second factor is conjugated (Hermitian, not symmetric).
+                    sum += applyTranspose(a, lda, i, kk, trans) * conj(applyTranspose(a, lda, j, kk, trans));
+                if(i == j && alpha == Real{0} && beta == Real{1})
+                    // True no-op (alpha=0, beta=1): the vendor leaves the diagonal, including its imaginary
+                    // part, unchanged.
+                    c[i * ldc + j] = c[i * ldc + j];
+                else if(i == j)
+                    // M*adjoint(M) is Hermitian with a real diagonal. Whenever the vendor update runs
+                    // (alpha != 0, or a scaling with beta != 1), the diagonal imaginary part is dropped:
+                    // c_diag = CF(alpha*sum.real() + beta*old.real(), 0).
+                    c[i * ldc + j] = T{alpha * sum.real() + beta * c[i * ldc + j].real(), Real{0}};
+                else
+                    c[i * ldc + j] = alpha * sum + beta * c[i * ldc + j];
+            }
+        }
+    }
+
     template<typename T>
     inline void gemvRef(
         T alpha,

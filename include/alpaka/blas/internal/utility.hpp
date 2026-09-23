@@ -51,14 +51,6 @@ namespace alpaka::blas::internal
     }
 
     template<typename T>
-    constexpr void validateWritable()
-    {
-        static_assert(
-            !std::is_const_v<alpaka::GetValueType_t<detail::unannotated_t<T>>>,
-            "The BLAS operand must be a writable view (element type must not be const).");
-    }
-
-    template<typename T>
     constexpr auto asRealMagnitude(T value)
     {
         using Real = Real_t<T>;
@@ -312,6 +304,40 @@ namespace alpaka::blas::internal
         }
         else if(ad.rows != bd.cols)
             throw std::invalid_argument("trsm right requires A.rows == B.cols.");
+    }
+
+    template<typename T_A, typename T_C>
+    inline void validateHerk(T_A const& A, T_C const& C)
+    {
+        // Value_t keeps cv-qualifiers, so both A (possibly const-element) and C (writable) are compared after
+        // removing const: herk requires a complex element type shared by A and C, and rejects mismatched complex
+        // scalars (finding: Complex<float> A with Complex<double> C must not silently select a backend overload).
+        using AValue = std::remove_cv_t<Value_t<T_A>>;
+        using CValue = std::remove_cv_t<Value_t<T_C>>;
+        static_assert(ComplexScalar<AValue>, "herk requires a complex A.");
+        static_assert(std::same_as<AValue, CValue>, "herk requires A and C to have the same element type.");
+        auto const ad = makeMatrixDescriptor(A);
+        auto const cd = makeMatrixDescriptor(C);
+        // A is a general dense matrix: reject triangle/unit-diagonal annotations.
+        if(ad.triangle != Triangle::full)
+            throw std::invalid_argument("herk requires a general dense A without a triangle annotation.");
+        if(ad.diagonal != Diagonal::nonUnit)
+            throw std::invalid_argument("herk requires a general dense A without a unit-diagonal annotation.");
+        // HERK accepts the as-stored matrix or its conjugate transpose only.
+        if(ad.transpose != Transpose::none && ad.transpose != Transpose::conjugateTransposed)
+            throw std::invalid_argument("herk accepts A or conjTransposed(A), not a plain transposed(A).");
+        // C must carry an explicit upper/lower selection.
+        if(cd.triangle == Triangle::full)
+            throw std::invalid_argument("herk requires upper(C) or lower(C).");
+        // C must not be transposed or unit-diagonal.
+        if(cd.transpose != Transpose::none)
+            throw std::invalid_argument("herk rejects a transposed C.");
+        if(cd.diagonal != Diagonal::nonUnit)
+            throw std::invalid_argument("herk rejects a unit-diagonal C.");
+        // op(A) is n x k; C must be n x n.
+        auto const n = getTranspose(A) == Transpose::none ? ad.rows : ad.cols;
+        if(cd.rows != n || cd.cols != n)
+            throw std::invalid_argument("herk requires C to be n x n where n is op(A) rows.");
     }
 
     template<typename T_A, typename T_C>

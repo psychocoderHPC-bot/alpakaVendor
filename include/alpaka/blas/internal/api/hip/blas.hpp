@@ -1016,6 +1016,78 @@ namespace alpaka::blas::internal
     }
 
     void alpakaFnDispatch(
+        HerkFn::Spec<alpaka::api::Hip, alpaka::deviceKind::AmdGpu>,
+        auto&& queue,
+        auto alpha,
+        auto const& A,
+        auto beta,
+        auto& C,
+        [[maybe_unused]] Options options)
+    {
+        // Value_t keeps cv-qualifiers; dispatch on the unqualified scalar so a const-element A (read-only input)
+        // selects the same vendor branch as a writable A.
+        using T = std::remove_cv_t<Value_t<ALPAKA_TYPEOF(A)>>;
+        static_assert(ComplexScalar<T>, "herk supports only complex scalar types.");
+        auto const ad = makeMatrixDescriptor(A);
+        auto const cd = makeMatrixDescriptor(C);
+        // Logical (post-op) extents: op(A) is n x k. The public wrapper intercepts the degenerate n == 0 / k == 0
+        // cases before dispatch, so this routine is only called for a well-defined update (n, k > 0).
+        auto const n = ad.transpose == Transpose::none ? ad.rows : ad.cols;
+        auto const k = ad.transpose == Transpose::none ? ad.cols : ad.rows;
+        auto const nInt = checkedCast<rocblas_int>(n, "herk n");
+        auto const kInt = checkedCast<rocblas_int>(k, "herk k");
+        auto const adLd = checkedCast<rocblas_int>(ad.ld, "herk A ld");
+        auto const cdLd = checkedCast<rocblas_int>(cd.ld, "herk C ld");
+        queue.enqueueNativeFn(
+            [=](hipStream_t nativeStream)
+            {
+                RocblasHandle rocblas{nativeStream};
+                auto handle = rocblas.handle;
+                setAtomicsMode(handle, options);
+                using Real = Real_t<T>;
+                Real alphaT = static_cast<Real>(alpha);
+                Real betaT = static_cast<Real>(beta);
+                // Row-major C = alpha*M*adjoint(M) + beta*C is, seen column-major, D = C^T. rocBLAS herk computes
+                // D = op(B)*op(B)^H, and real alpha/beta avoid conjugating the coefficients. Reinterpreting
+                // row-major A as B = A^T gives: public none (M = A) -> op(B) = conjugate transpose;
+                // public conjTransposed (M = A^H) -> op(B) = none.
+                auto const colOp
+                    = ad.transpose == Transpose::none ? rocblas_operation_conjugate_transpose : rocblas_operation_none;
+                auto const colTriangle = swappedTriangle(cd.triangle);
+                if constexpr(std::same_as<T, alpaka::math::Complex<float>>)
+                    check(
+                        rocblas_cherk(
+                            handle,
+                            toRocblasFill(colTriangle),
+                            colOp,
+                            nInt,
+                            kInt,
+                            &alphaT,
+                            reinterpret_cast<rocblas_float_complex const*>(ad.constPtr),
+                            adLd,
+                            &betaT,
+                            reinterpret_cast<rocblas_float_complex*>(cd.mutPtr),
+                            cdLd),
+                        "rocblas_cherk");
+                else
+                    check(
+                        rocblas_zherk(
+                            handle,
+                            toRocblasFill(colTriangle),
+                            colOp,
+                            nInt,
+                            kInt,
+                            &alphaT,
+                            reinterpret_cast<rocblas_double_complex const*>(ad.constPtr),
+                            adLd,
+                            &betaT,
+                            reinterpret_cast<rocblas_double_complex*>(cd.mutPtr),
+                            cdLd),
+                        "rocblas_zherk");
+            });
+    }
+
+    void alpakaFnDispatch(
         SyrkFn::Spec<alpaka::api::Hip, alpaka::deviceKind::AmdGpu>,
         auto&& queue,
         auto alpha,

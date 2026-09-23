@@ -13,8 +13,12 @@ namespace alpaka::blas::internal
      *
      * Only the selected triangle of ``C`` is touched; the opposite triangle and padding are left unchanged.
      * When ``beta == 0`` the old content of the triangle is not read, the entries are only overwritten
-     * with zeros. This implements the degenerate ``k == 0`` / ``alpha == 0`` syrk semantics without
-     * touching ``A`` at all.
+     * with zeros. This implements the degenerate ``k == 0`` / ``alpha == 0`` rank-k semantics (both the complex
+     * Hermitian ``herk`` and the real symmetric ``syrk``) without touching ``A`` at all: the selected triangle
+     * becomes ``beta * C``.
+     *
+     * For complex ``C`` the diagonal stays real: ``beta`` is a real scalar, so the real (or zero) diagonal is
+     * scaled in its real part only and its imaginary part remains zero.
      */
     struct ScaleTriangleKernel
     {
@@ -40,6 +44,16 @@ namespace alpaka::blas::internal
                     auto const idx = alpaka::Vec{static_cast<std::size_t>(row), static_cast<std::size_t>(col)};
                     if(beta == T{0})
                         C[idx] = T{0};
+                    else if constexpr(ComplexScalar<T>)
+                    {
+                        // herk keeps the diagonal real whenever it writes it: beta is real, so scale the real part
+                        // and keep the diagonal imaginary part at zero; off-diagonal elements scale in both parts.
+                        auto const betaR = static_cast<Real_t<T>>(beta);
+                        if(row == col)
+                            C[idx] = T{betaR * C[idx].real(), Real_t<T>{0}};
+                        else
+                            C[idx] = T{betaR * static_cast<T>(C[idx]).real(), betaR * static_cast<T>(C[idx]).imag()};
+                    }
                     else
                         C[idx] = static_cast<T>(beta * static_cast<T>(C[idx]));
                 }
@@ -50,6 +64,18 @@ namespace alpaka::blas::internal
     /** Scale (or zero) the selected triangle of ``C`` in place on the device/queue of ``queue``.
      *
      * The operation is enqueued and asynchronous like any other BLAS call. ``A`` is never accessed.
+     *
+     * ``beta == 1`` is a true no-op: the selected triangle, including a complex diagonal imaginary part, stays
+     * byte-identical and nothing is enqueued.
+     * ``beta == 0`` zeroes the selected triangle without reading its previous values.
+     *
+     * The kernel traverses one row index per work item, so any row count up to ``UINT32_MAX`` is representable; the
+     * only remaining guard rejects metadata beyond that index domain. The leading dimension is narrowed through the
+     * same vendor-int gate as the non-degenerate rank-k dispatch of the owning backend: 64-bit on oneMKL (which uses
+     * 64-bit dimensions), ``checkedCast<int>`` on host/cuda/hip (whose vendor rank-k rejects ``ld > 2^31 - 1``), so a
+     * degenerate ``k == 0`` / ``alpha == 0`` call never diverges from the ``k > 0`` path of its own backend. The
+     * metadata guards run before the ``beta == 1`` no-op return, so a degenerate call rejects exactly the same
+     * oversized metadata as its backend's ``k > 0`` dispatch even when it enqueues no kernel.
      *
      * @param queue alpaka queue that defines when the work runs.
      * @param C input/output result matrix, annotated ``upper(C)`` or ``lower(C)``.
@@ -68,17 +94,21 @@ namespace alpaka::blas::internal
         // math only ever produces row/col indices below n, so the pitch bytes (size_t) are exact by construction:
         // cd.ld was derived in makeMatrixDescriptor from the pitch divided by sizeof(T), hence
         // cd.ld * sizeof(T) <= original pitch <= PTRDIFF_MAX. The row pitch must still fit the vendor integer width so
-        // the degenerate branch stays aligned with the vendor syrk paths: host/cuda/hip narrow to int, while
-        // oneAPI/oneMKL keeps 64-bit leading dimensions (its syrk takes std::int64_t).
+        // the degenerate branch stays aligned with the vendor rank-k paths: host/cuda/hip narrow to int, while
+        // oneAPI/oneMKL keeps 64-bit leading dimensions.
         if(n > std::numeric_limits<std::uint32_t>::max())
-            throw std::invalid_argument("syrk scale: number of rows is too large.");
+            throw std::invalid_argument("rank-k scale: number of rows is too large.");
         std::int64_t const ld = [&]
         {
             if constexpr(std::same_as<ALPAKA_TYPEOF(queue.getDevice().getApi()), alpaka::api::OneApi>)
-                return cd.ld; // oneMKL syrk uses std::int64_t dimensions; no narrowing required.
+                return cd.ld; // oneMKL uses std::int64_t dimensions; no narrowing required.
             else
-                return static_cast<std::int64_t>(checkedCast<int>(cd.ld, "syrk scale C ld"));
+                return static_cast<std::int64_t>(checkedCast<int>(cd.ld, "rank-k scale C ld"));
         }();
+        using Real = Real_t<T>;
+        auto const betaR = static_cast<Real>(beta);
+        if(betaR == Real{1})
+            return; // true no-op: selected triangle stays byte-identical (incl. a complex diagonal imaginary part).
         auto const nU = static_cast<std::uint32_t>(n);
         auto const extent = alpaka::Vec<std::uint32_t, 1u>{nU};
         auto const cv = alpaka::makeMdSpan(
@@ -86,8 +116,6 @@ namespace alpaka::blas::internal
             alpaka::Vec<std::uint32_t, 2u>{nU, nU},
             alpaka::Vec<std::size_t, 2u>{static_cast<std::size_t>(ld) * sizeof(T), sizeof(T)});
         auto const frameSpec = alpaka::onHost::getFrameSpec(queue.getDevice(), alpaka::exec::anyExecutor, extent);
-        queue.enqueue(
-            frameSpec,
-            alpaka::KernelBundle{ScaleTriangleKernel{}, cv, n, getTriangle(C), static_cast<T>(beta)});
+        queue.enqueue(frameSpec, alpaka::KernelBundle{ScaleTriangleKernel{}, cv, n, getTriangle(C), betaR});
     }
 } // namespace alpaka::blas::internal
