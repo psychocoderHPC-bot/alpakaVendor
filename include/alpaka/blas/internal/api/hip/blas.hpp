@@ -414,6 +414,74 @@ namespace alpaka::blas::internal
     }
 
     void alpakaFnDispatch(
+        DotcFn::Spec<alpaka::api::Hip, alpaka::deviceKind::AmdGpu>,
+        auto&& queue,
+        auto const& x,
+        auto const& y,
+        auto& result,
+        [[maybe_unused]] Options options)
+    {
+        using Scalar = std::remove_cv_t<Value_t<ALPAKA_TYPEOF(x)>>;
+        auto const xd = makeVectorDescriptor(x);
+        auto const yd = makeVectorDescriptor(y);
+        auto const nInt = checkedCast<rocblas_int>(xd.n, "dotc n");
+        auto const incxInt = checkedCast<rocblas_int>(xd.inc, "dotc incx");
+        auto const incyInt = checkedCast<rocblas_int>(yd.inc, "dotc incy");
+        auto* resultPtr = alpaka::onHost::data(getView(result));
+        queue.enqueueNativeFn(
+            [=](hipStream_t nativeStream)
+            {
+                RocblasHandle rocblas{nativeStream};
+                auto handle = rocblas.handle;
+                setPointerMode<Scalar>(handle);
+                if constexpr(std::same_as<Scalar, float>)
+                    check(
+                        rocblas_sdot(
+                            handle,
+                            nInt,
+                            static_cast<float const*>(xd.constPtr),
+                            incxInt,
+                            static_cast<float const*>(yd.constPtr),
+                            incyInt,
+                            resultPtr),
+                        "rocblas_sdot");
+                else if constexpr(std::same_as<Scalar, double>)
+                    check(
+                        rocblas_ddot(
+                            handle,
+                            nInt,
+                            static_cast<double const*>(xd.constPtr),
+                            incxInt,
+                            static_cast<double const*>(yd.constPtr),
+                            incyInt,
+                            resultPtr),
+                        "rocblas_ddot");
+                else if constexpr(std::same_as<Scalar, alpaka::math::Complex<float>>)
+                    check(
+                        rocblas_cdotc(
+                            handle,
+                            nInt,
+                            reinterpret_cast<rocblas_float_complex const*>(xd.constPtr),
+                            incxInt,
+                            reinterpret_cast<rocblas_float_complex const*>(yd.constPtr),
+                            incyInt,
+                            reinterpret_cast<rocblas_float_complex*>(resultPtr)),
+                        "rocblas_cdotc");
+                else
+                    check(
+                        rocblas_zdotc(
+                            handle,
+                            nInt,
+                            reinterpret_cast<rocblas_double_complex const*>(xd.constPtr),
+                            incxInt,
+                            reinterpret_cast<rocblas_double_complex const*>(yd.constPtr),
+                            incyInt,
+                            reinterpret_cast<rocblas_double_complex*>(resultPtr)),
+                        "rocblas_zdotc");
+            });
+    }
+
+    void alpakaFnDispatch(
         Nrm2Fn::Spec<alpaka::api::Hip, alpaka::deviceKind::AmdGpu>,
         auto&& queue,
         auto const& x,
@@ -946,7 +1014,6 @@ namespace alpaka::blas::internal
                         "rocblas_ztrsm");
             });
     }
-
     void alpakaFnDispatch(
         HerkFn::Spec<alpaka::api::Hip, alpaka::deviceKind::AmdGpu>,
         auto&& queue,
@@ -1016,6 +1083,73 @@ namespace alpaka::blas::internal
                             reinterpret_cast<rocblas_double_complex*>(cd.mutPtr),
                             cdLd),
                         "rocblas_zherk");
+            });
+    }
+
+    void alpakaFnDispatch(
+        SyrkFn::Spec<alpaka::api::Hip, alpaka::deviceKind::AmdGpu>,
+        auto&& queue,
+        auto alpha,
+        auto const& A,
+        auto beta,
+        auto& C,
+        Options options)
+    {
+        using T = std::remove_cv_t<Value_t<ALPAKA_TYPEOF(A)>>;
+        static_assert(RealScalar<T>, "syrk supports only real scalar types.");
+        // The public syrk entry converts alpha/beta once; the dispatch receives canonical T scalars already and must
+        // not re-cast them (convert-once semantics).
+        static_assert(std::same_as<decltype(alpha), T>, "syrk alpha must arrive as the canonical scalar.");
+        static_assert(std::same_as<decltype(beta), T>, "syrk beta must arrive as the canonical scalar.");
+        auto const ad = makeMatrixDescriptor(A);
+        auto const cd = makeMatrixDescriptor(C);
+        auto const n = ad.transpose == Transpose::none ? ad.rows : ad.cols;
+        auto const k = ad.transpose == Transpose::none ? ad.cols : ad.rows;
+        auto const nInt = checkedCast<rocblas_int>(n, "syrk n");
+        auto const kInt = checkedCast<rocblas_int>(k, "syrk k");
+        auto const adLd = checkedCast<rocblas_int>(ad.ld, "syrk A ld");
+        auto const cdLd = checkedCast<rocblas_int>(cd.ld, "syrk C ld");
+        queue.enqueueNativeFn(
+            [=](hipStream_t nativeStream)
+            {
+                RocblasHandle rocblas{nativeStream};
+                auto handle = rocblas.handle;
+                setAtomicsMode(handle, options);
+                // Row-major C = alpha*M*M^T + beta*C is, seen column-major, D = C^T.
+                // rocBLAS syrk computes D = op(B)*op(B)^T, so pass op(B)=M^T when A is as-stored.
+                auto const colOp
+                    = ad.transpose == Transpose::none ? rocblas_operation_transpose : rocblas_operation_none;
+                auto const colTriangle = swappedTriangle(cd.triangle);
+                if constexpr(std::same_as<T, float>)
+                    check(
+                        rocblas_ssyrk(
+                            handle,
+                            toRocblasFill(colTriangle),
+                            colOp,
+                            nInt,
+                            kInt,
+                            &alpha,
+                            static_cast<float const*>(ad.constPtr),
+                            adLd,
+                            &beta,
+                            static_cast<float*>(cd.mutPtr),
+                            cdLd),
+                        "rocblas_ssyrk");
+                else
+                    check(
+                        rocblas_dsyrk(
+                            handle,
+                            toRocblasFill(colTriangle),
+                            colOp,
+                            nInt,
+                            kInt,
+                            &alpha,
+                            static_cast<double const*>(ad.constPtr),
+                            adLd,
+                            &beta,
+                            static_cast<double*>(cd.mutPtr),
+                            cdLd),
+                        "rocblas_dsyrk");
             });
     }
 } // namespace alpaka::blas::internal

@@ -40,6 +40,7 @@ TEMPLATE_LIST_TEST_CASE("Tutorial: BLAS walkthrough", "[doc][tutorial][blas]", T
         auto y = alpaka::onHost::allocUnified<Scalar>(device, 3u);
         auto z = alpaka::onHost::allocUnified<Scalar>(device, 3u);
         auto dotResult = alpaka::onHost::allocUnified<Scalar>(device, 1u);
+        auto dotcResult = alpaka::onHost::allocUnified<Scalar>(device, 1u);
         auto nrm2Result = alpaka::onHost::allocUnified<Scalar>(device, 1u);
         auto asumResult = alpaka::onHost::allocUnified<Scalar>(device, 1u);
         auto iamaxResult = alpaka::onHost::allocUnified<int>(device, 1u);
@@ -56,6 +57,7 @@ TEMPLATE_LIST_TEST_CASE("Tutorial: BLAS walkthrough", "[doc][tutorial][blas]", T
         alpaka::blas::onHost::scal(queue, 2.0f, z);
         alpaka::blas::onHost::axpy(queue, -1.0f, y, x);
         alpaka::blas::onHost::dot(queue, y, z, dotResult);
+        alpaka::blas::onHost::dotc(queue, y, z, dotcResult);
         alpaka::blas::onHost::nrm2(queue, y, nrm2Result);
         alpaka::blas::onHost::asum(queue, x, asumResult);
         alpaka::blas::onHost::iamax(queue, x, iamaxResult);
@@ -71,6 +73,8 @@ TEMPLATE_LIST_TEST_CASE("Tutorial: BLAS walkthrough", "[doc][tutorial][blas]", T
         CHECK(y.data()[1] == Catch::Approx(2.0f));
         CHECK(y.data()[2] == Catch::Approx(3.0f));
         CHECK(dotResult.data()[0] == Catch::Approx(28.0f));
+        // For real-valued vectors dotc is identical to dot.
+        CHECK(dotcResult.data()[0] == Catch::Approx(28.0f));
         CHECK(nrm2Result.data()[0] == Catch::Approx(std::sqrt(14.0f)).epsilon(1.0e-5));
         CHECK(asumResult.data()[0] == Catch::Approx(9.0f));
         CHECK(iamaxResult.data()[0] == 1);
@@ -220,7 +224,31 @@ TEMPLATE_LIST_TEST_CASE("Tutorial: BLAS walkthrough", "[doc][tutorial][blas]", T
         CHECK(herkC[alpaka::Vec<uint32_t, 2u>{1u, 0u}] == Complex{0.0f, 0.0f});
         //! [blas-tutorial-herk]
 
-        //! [blas-tutorial-batched-gemm]
+        //! [blas-tutorial-syrk]
+        // Symmetric rank-k update: C = alpha * A * A^T + beta * C (upper triangle only).
+        // A is 2x3, C is 2x2.
+        auto syrkA = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{2u, 3u});
+        auto syrkC = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 2u>{2u, 2u});
+        for(uint32_t r = 0; r < 2u; ++r)
+            for(uint32_t c = 0; c < 3u; ++c)
+                syrkA[alpaka::Vec<uint32_t, 2u>{r, c}] = float(r * 3u + c + 1u);
+        syrkC[alpaka::Vec<uint32_t, 2u>{0u, 0u}] = 10.0f;
+        syrkC[alpaka::Vec<uint32_t, 2u>{0u, 1u}] = 0.0f;
+        syrkC[alpaka::Vec<uint32_t, 2u>{1u, 0u}] = 0.0f;
+        syrkC[alpaka::Vec<uint32_t, 2u>{1u, 1u}] = 10.0f;
+        auto syrkUpperC = alpaka::blas::upper(syrkC);
+        alpaka::blas::onHost::syrk(queue, 1.0f, syrkA, 1.0f, syrkUpperC, options);
+        alpaka::onHost::wait(queue);
+        // A = [[1,2,3],[4,5,6]]; A*A^T = [[14,32],[32,77]]. The selected (upper) triangle of C is updated:
+        // C(i,j) = A*A^T(i,j) + C(i,j) for i <= j (the diagonal counts as upper), so the upper triangle of the
+        // result is [[24,32],[.,77]]. The opposite (strictly lower) triangle is left unchanged.
+        CHECK(syrkC[alpaka::Vec<uint32_t, 2u>{0u, 0u}] == Catch::Approx(24.0f));
+        CHECK(syrkC[alpaka::Vec<uint32_t, 2u>{0u, 1u}] == Catch::Approx(32.0f));
+        CHECK(syrkC[alpaka::Vec<uint32_t, 2u>{1u, 1u}] == Catch::Approx(87.0f));
+        // Strictly lower triangle unchanged (was 0)
+        CHECK(syrkC[alpaka::Vec<uint32_t, 2u>{1u, 0u}] == Catch::Approx(0.0f));
+        //! [blas-tutorial-syrk]
+
         auto batchA = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 3u>{2u, 2u, 2u});
         auto batchB = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 3u>{2u, 2u, 2u});
         auto batchC = alpaka::onHost::allocUnified<Scalar>(device, alpaka::Vec<uint32_t, 3u>{2u, 2u, 2u});

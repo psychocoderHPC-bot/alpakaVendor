@@ -446,6 +446,75 @@ namespace alpaka::blas::internal
     }
 
     void alpakaFnDispatch(
+        DotcFn::Spec<alpaka::api::Cuda, alpaka::deviceKind::NvidiaGpu>,
+        auto&& queue,
+        auto const& x,
+        auto const& y,
+        auto& result,
+        Options options)
+    {
+        using Scalar = std::remove_cv_t<Value_t<ALPAKA_TYPEOF(x)>>;
+        auto const xd = makeVectorDescriptor(x);
+        auto const yd = makeVectorDescriptor(y);
+        auto const nInt = checkedCast<int>(xd.n, "dotc n");
+        auto const incxInt = checkedCast<int>(xd.inc, "dotc incx");
+        auto const incyInt = checkedCast<int>(yd.inc, "dotc incy");
+        auto* resultPtr = alpaka::onHost::data(getView(result));
+        queue.enqueueNativeFn(
+            [=](cudaStream_t nativeStream)
+            {
+                CublasHandle cublas{nativeStream};
+                auto handle = cublas.handle;
+                setMathMode<Scalar>(handle, options);
+                check(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_DEVICE), "cublasSetPointerMode");
+                if constexpr(std::same_as<Scalar, float>)
+                    check(
+                        cublasSdot(
+                            handle,
+                            nInt,
+                            static_cast<float const*>(xd.constPtr),
+                            incxInt,
+                            static_cast<float const*>(yd.constPtr),
+                            incyInt,
+                            resultPtr),
+                        "cublasSdot");
+                else if constexpr(std::same_as<Scalar, double>)
+                    check(
+                        cublasDdot(
+                            handle,
+                            nInt,
+                            static_cast<double const*>(xd.constPtr),
+                            incxInt,
+                            static_cast<double const*>(yd.constPtr),
+                            incyInt,
+                            resultPtr),
+                        "cublasDdot");
+                else if constexpr(std::same_as<Scalar, alpaka::math::Complex<float>>)
+                    check(
+                        cublasCdotc(
+                            handle,
+                            nInt,
+                            reinterpret_cast<cuComplex const*>(xd.constPtr),
+                            incxInt,
+                            reinterpret_cast<cuComplex const*>(yd.constPtr),
+                            incyInt,
+                            reinterpret_cast<cuComplex*>(resultPtr)),
+                        "cublasCdotc");
+                else
+                    check(
+                        cublasZdotc(
+                            handle,
+                            nInt,
+                            reinterpret_cast<cuDoubleComplex const*>(xd.constPtr),
+                            incxInt,
+                            reinterpret_cast<cuDoubleComplex const*>(yd.constPtr),
+                            incyInt,
+                            reinterpret_cast<cuDoubleComplex*>(resultPtr)),
+                        "cublasZdotc");
+            });
+    }
+
+    void alpakaFnDispatch(
         Nrm2Fn::Spec<alpaka::api::Cuda, alpaka::deviceKind::NvidiaGpu>,
         auto&& queue,
         auto const& x,
@@ -883,7 +952,6 @@ namespace alpaka::blas::internal
                         "cublasZtrsm");
             });
     }
-
     void alpakaFnDispatch(
         HerkFn::Spec<alpaka::api::Cuda, alpaka::deviceKind::NvidiaGpu>,
         auto&& queue,
@@ -953,6 +1021,74 @@ namespace alpaka::blas::internal
                             reinterpret_cast<cuDoubleComplex*>(cd.mutPtr),
                             cdLd),
                         "cublasZherk");
+            });
+    }
+
+    void alpakaFnDispatch(
+        SyrkFn::Spec<alpaka::api::Cuda, alpaka::deviceKind::NvidiaGpu>,
+        auto&& queue,
+        auto alpha,
+        auto const& A,
+        auto beta,
+        auto& C,
+        Options options)
+    {
+        using T = std::remove_cv_t<Value_t<ALPAKA_TYPEOF(A)>>;
+        static_assert(RealScalar<T>, "syrk supports only real scalar types.");
+        // The public syrk entry converts alpha/beta once; the dispatch receives canonical T scalars already and must
+        // not re-cast them (convert-once semantics).
+        static_assert(std::same_as<decltype(alpha), T>, "syrk alpha must arrive as the canonical scalar.");
+        static_assert(std::same_as<decltype(beta), T>, "syrk beta must arrive as the canonical scalar.");
+        auto const ad = makeMatrixDescriptor(A);
+        auto const cd = makeMatrixDescriptor(C);
+        auto const n = ad.transpose == Transpose::none ? ad.rows : ad.cols;
+        auto const k = ad.transpose == Transpose::none ? ad.cols : ad.rows;
+        auto const nInt = checkedCast<int>(n, "syrk n");
+        auto const kInt = checkedCast<int>(k, "syrk k");
+        auto const adLd = checkedCast<int>(ad.ld, "syrk A ld");
+        auto const cdLd = checkedCast<int>(cd.ld, "syrk C ld");
+        queue.enqueueNativeFn(
+            [=](cudaStream_t nativeStream)
+            {
+                CublasHandle cublas{nativeStream};
+                auto handle = cublas.handle;
+                setMathMode<T>(handle, options);
+                setAtomicsMode(handle, options);
+                // Row-major C = alpha*M*M^T + beta*C with C row-major n x n is, seen column-major,
+                // D = C^T = alpha*M^T*M + beta*D. cuBLAS syrk computes D = op(B)*op(B)^T, so we need
+                // op(B) = M^T. M = op_public(A), so M^T = op_flipped(A) where flipped(none)=T, flipped(T)=N.
+                auto const colOp = ad.transpose == Transpose::none ? CUBLAS_OP_T : CUBLAS_OP_N;
+                auto const colTriangle = swappedTriangle(cd.triangle);
+                if constexpr(std::same_as<T, float>)
+                    check(
+                        cublasSsyrk(
+                            handle,
+                            toCublasFill(colTriangle),
+                            colOp,
+                            nInt,
+                            kInt,
+                            &alpha,
+                            static_cast<float const*>(ad.constPtr),
+                            adLd,
+                            &beta,
+                            static_cast<float*>(cd.mutPtr),
+                            cdLd),
+                        "cublasSsyrk");
+                else
+                    check(
+                        cublasDsyrk(
+                            handle,
+                            toCublasFill(colTriangle),
+                            colOp,
+                            nInt,
+                            kInt,
+                            &alpha,
+                            static_cast<double const*>(ad.constPtr),
+                            adLd,
+                            &beta,
+                            static_cast<double*>(cd.mutPtr),
+                            cdLd),
+                        "cublasDsyrk");
             });
     }
 } // namespace alpaka::blas::internal

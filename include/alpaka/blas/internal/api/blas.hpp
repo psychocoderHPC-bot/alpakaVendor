@@ -16,6 +16,7 @@ namespace alpaka::blas::internal
     ALPAKA_FN_SYMBOL(ScalFn);
     ALPAKA_FN_SYMBOL(AxpyFn);
     ALPAKA_FN_SYMBOL(DotFn);
+    ALPAKA_FN_SYMBOL(DotcFn);
     ALPAKA_FN_SYMBOL(Nrm2Fn);
     ALPAKA_FN_SYMBOL(AsumFn);
     ALPAKA_FN_SYMBOL(IamaxFn);
@@ -24,6 +25,7 @@ namespace alpaka::blas::internal
     ALPAKA_FN_SYMBOL(StridedBatchedGemmFn);
     ALPAKA_FN_SYMBOL(TrsmFn);
     ALPAKA_FN_SYMBOL(HerkFn);
+    ALPAKA_FN_SYMBOL(SyrkFn);
 } // namespace alpaka::blas::internal
 
 #include "alpaka/blas/internal/api/cuda/blas.hpp"

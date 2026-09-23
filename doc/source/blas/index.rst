@@ -18,9 +18,9 @@ Topics
 What is available today?
 ------------------------
 
-- **Level 1:** ``copy``, ``swap``, ``scal``, ``axpy``, ``dot``, ``nrm2``, ``asum``, ``iamax``
+- **Level 1:** ``copy``, ``swap``, ``scal``, ``axpy``, ``dot``, ``dotc``, ``nrm2``, ``asum``, ``iamax``
 - **Level 2:** ``gemv``
-- **Level 3:** ``gemm``, ``stridedBatchedGemm``, ``trsm``, ``herk``
+- **Level 3:** ``gemm``, ``stridedBatchedGemm``, ``syrk``, ``herk``, ``trsm``
 
 How to read the BLAS views
 --------------------------
@@ -32,7 +32,32 @@ The wrappers work directly with alpaka mdspan-like buffers and views:
 - 3D views are treated as ``[batch, row, column]`` for strided batched GEMM
 
 As in alpaka, the last index is the contiguous one. For a matrix ``A(rows, cols)``, ``A[{r, c}]`` means row ``r`` and
-column ``c``.
+column ``c``. Row and batch byte pitches must be exact multiples of the element size; non-multiple pitches throw
+``std::invalid_argument``.
+
+Routine reference
+-----------------
+
+.. list-table:: BLAS routines
+   :header-rows: 1
+   :widths: 20 45 35
+
+   * - Routine
+     - Operation
+     - Scalar types
+   * - ``dot``
+     - ``result[0] = sum_i x[i] * y[i]``
+     - ``float``, ``double``, ``alpaka::math::Complex<float>``, ``alpaka::math::Complex<double>``
+   * - ``dotc``
+     - ``result[0] = sum_i conj(x[i]) * y[i]`` (first operand conjugated)
+     - ``float``, ``double``, ``alpaka::math::Complex<float>``, ``alpaka::math::Complex<double>``
+
+``dotc`` maps to the vendor conjugate-dot-product routines (``*dotc`` elsewhere) and, like ``dot``, is
+available on the OpenBLAS/CBLAS host, cuBLAS, rocBLAS, and oneMKL host paths. It is not provided for OpenMP or the
+generic native alpaka CPU queues.
+
+Views passed to the 2D and 3D BLAS routines must be row-major dense: the column stride must be exactly 1 and the leading
+dimension (the row stride) must be at least ``cols``. Violations raise ``std::invalid_argument``.
 
 Quick example
 -------------
@@ -60,6 +85,61 @@ The public helpers let you describe how an existing view should be interpreted:
 These annotations can be stacked. For example, ``unitDiag(lower(A))`` marks a lower-triangular matrix whose diagonal is
 implicitly one, and ``conjTransposed(A)`` asks BLAS to use the Hermitian transpose without creating a temporary copy.
 Complex ``gemv`` with ``conjTransposed(A)`` is currently not available on the CUDA/cuBLAS and HIP/rocBLAS row-major paths.
+
+SYRK: symmetric rank-k update
+-----------------------------
+
+``syrk`` computes the selected triangle of
+
+``C = alpha * op(A) * op(A)^T + beta * C``
+
+with ``op(A)`` the transpose (or, for real operands equivalently, the conjugate transpose) of the stored matrix
+``A`` of shape ``n x k`` and ``C`` ``n x n``; only the triangle selected by ``upper(C)`` or ``lower(C)`` is updated.
+The formula is the real symmetric rank-k form: the second factor is the plain transpose ``op(A)^T`` (never a
+Hermitian/conjugate-transposed right-hand side, which is the domain of the complex ``herk`` routine). The opposite
+triangle and any padding are left unchanged.
+
+- Real scalar types ``float`` and ``double`` only.
+- ``A`` may be annotated ``transposed(A)`` or ``conjTransposed(A)``; for real operands ``conjTransposed(A)`` is
+  equivalent to ``transposed(A)`` (conjugation is the identity on real types) and is normalized to the transposed
+  operation.
+- ``alpha`` and ``beta`` are always converted exactly once, at the public entry, into the canonical scalar type of the
+  operands; the backend dispatch receives the already-converted values and never re-casts them.
+- Backends: OpenBLAS/CBLAS host, CUDA/cuBLAS, HIP/rocBLAS, and oneAPI/oneMKL.
+- Row-major handling: the views follow alpaka's memory layout (last index is contiguous), and the wrappers perform the
+  necessary layout translation for the vendor libraries.
+
+Options for SYRK (what each backend honors):
+
+- OpenBLAS/CBLAS host: ``Precision`` and ``Algorithm`` are accepted and currently ignored.
+- CUDA/cuBLAS: ``Precision::exact`` selects the pedantic math mode for single-precision SYRK. ``Algorithm``:
+  ``deterministic`` disables cuBLAS atomics for the SYRK call and ``fastest`` enables them.
+- HIP/rocBLAS: ``Precision`` is accepted and currently ignored. ``Algorithm``: ``deterministic`` disables rocBLAS
+  atomics for the SYRK call and ``fastest`` enables them when the rocBLAS handle exposes atomics mode.
+- oneAPI/oneMKL: ``Precision::exact`` requests the oneMKL standard compute mode and ``Algorithm::deterministic`` the
+  standard mode as well; ``Algorithm::fastest`` requests the oneMKL alternate compute mode for single-precision SYRK
+  when oneMKL supports it (best-effort, falling back to the routine default otherwise).
+HERK: Hermitian rank-k update
+-----------------------------
+
+``herk`` computes the selected triangle of
+
+``C = alpha * op(A) * op(A)^H + beta * C``
+
+with ``op(A)`` the as-stored matrix or its conjugate transpose, of shape ``n x k``, and ``C`` ``n x n``; only the
+triangle selected by ``upper(C)`` or ``lower(C)`` is updated. The formula is the complex Hermitian rank-k form: the
+second factor is the conjugate transpose ``op(A)^H``.
+
+- Complex scalar types ``alpaka::math::Complex<float>`` and ``alpaka::math::Complex<double>`` only.
+- ``A`` may be annotated ``conjTransposed(A)`` or left plain; the plain ``transposed(A)`` annotation is rejected
+  because it is not a standard HERK operation.
+- ``alpha`` and ``beta`` must be real values; complex coefficients are rejected.
+- On an actual update the written diagonal is real (its imaginary part is discarded); the opposite triangle and any
+  padding are left unchanged.
+- ``k == 0`` or ``alpha == 0`` produce ``beta * C`` on the selected triangle without reading ``A``; the degenerate
+  path is a queued triangle-scale kernel, so it stays ordered with respect to other work on the same queue.
+- Backends: OpenBLAS/CBLAS host, CUDA/cuBLAS, HIP/rocBLAS, and oneAPI/oneMKL.
+
 
 Backend notes
 -------------

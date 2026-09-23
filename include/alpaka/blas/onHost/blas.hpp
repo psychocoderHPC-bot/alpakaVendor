@@ -22,6 +22,7 @@ namespace alpaka::blas::onHost
     void copy(auto& queue, concepts::VectorView auto const& x, concepts::VectorView auto& y, Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(x)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(y)>();
         internal::validateSameVectorExtent(x, y, "copy");
         internal::CopyFn::call(queue, x, y, options);
     }
@@ -37,6 +38,8 @@ namespace alpaka::blas::onHost
     void swap(auto& queue, concepts::VectorView auto& x, concepts::VectorView auto& y, Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(x)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(x)>();
+        internal::validateWritable<ALPAKA_TYPEOF(y)>();
         internal::validateSameVectorExtent(x, y, "swap");
         internal::SwapFn::call(queue, x, y, options);
     }
@@ -54,6 +57,7 @@ namespace alpaka::blas::onHost
     void scal(auto& queue, auto alpha, concepts::VectorView auto& x, Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(x)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(x)>();
         internal::ScalFn::call(queue, alpha, x, options);
     }
 
@@ -76,6 +80,7 @@ namespace alpaka::blas::onHost
         Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(x)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(y)>();
         internal::validateSameVectorExtent(x, y, "axpy");
         internal::AxpyFn::call(queue, alpha, x, y, options);
     }
@@ -99,9 +104,66 @@ namespace alpaka::blas::onHost
         Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(x)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(result)>();
         internal::validateSameVectorExtent(x, y, "dot");
         internal::validateScalarResult(x, result, "dot");
         internal::DotFn::call(queue, x, y, result, options);
+    }
+
+    /**
+     * Compute the conjugated dot product.
+     *
+     * Computes ``result[0] = sum_i conj(x[i]) * y[i]``. The first operand is conjugated; the second is not. For
+     * real-valued vectors this is identical to ``dot``. For complex-valued vectors it differs from ``dot``, which
+     * leaves both operands unconjugated.
+     *
+     * ``dotc`` is available on the same backends as ``dot`` (OpenBLAS/cuBLAS/rocBLAS/oneMKL host paths); it is not
+     * provided for OpenMP or the generic native alpaka CPU queues.
+     *
+     * alpaka 1D vector views are always contiguous (the reported element pitch equals the element size), so the BLAS
+     * increments passed to the backend are always 1; non-unit 1D strides are not expressible through alpaka 1D views.
+     * A view shifted by ``getSubView`` (or an MdSpan created directly from an offset pointer) is honored via its base
+     * pointer.
+     *
+     * @param queue alpaka queue that defines when the work runs.
+     * @param x first input vector, conjugated before multiplication.
+     * @param y second input vector, used as-is.
+     * @param result single-element output view that receives the scalar result.
+     * @param options optional backend hints.
+     */
+    void dotc(
+        auto& queue,
+        concepts::VectorView auto const& x,
+        concepts::VectorView auto const& y,
+        concepts::VectorView auto& result,
+        Options options = {})
+        requires(
+            std::same_as<
+                std::remove_cv_t<internal::Value_t<ALPAKA_TYPEOF(x)>>,
+                std::remove_cv_t<internal::Value_t<ALPAKA_TYPEOF(y)>>>
+            && std::same_as<
+                std::remove_cv_t<internal::Value_t<ALPAKA_TYPEOF(x)>>,
+                std::remove_cv_t<internal::Value_t<ALPAKA_TYPEOF(result)>>>
+            && !std::is_const_v<alpaka::GetValueType_t<alpaka::blas::detail::unannotated_t<ALPAKA_TYPEOF(result)>>>)
+    {
+        using XValue = internal::Value_t<ALPAKA_TYPEOF(x)>;
+        using YValue = internal::Value_t<ALPAKA_TYPEOF(y)>;
+        using ResultValue = internal::Value_t<ALPAKA_TYPEOF(result)>;
+        // Routine-local unqualified scalar. ``Value_t`` is cv-preserving so read-only input views (``MdSpan<T
+        // const>``) compare equal with writable ones, while mismatched element types (``x<float>, y<double>``) are
+        // still rejected below.
+        using Scalar = std::remove_cv_t<XValue>;
+        static_assert(
+            std::same_as<Scalar, std::remove_cv_t<YValue>>,
+            "dotc requires x and y to have the same element type.");
+        static_assert(
+            std::same_as<Scalar, std::remove_cv_t<ResultValue>>,
+            "dotc requires result to have the same element type as x and y.");
+        internal::validateScalarSupport<Scalar>();
+        internal::validateWritable<ALPAKA_TYPEOF(result)>();
+        internal::validateSameVectorExtent(x, y, "dotc");
+        internal::validateScalarResult(x, result, "dotc");
+        internal::DotcFn::call(queue, x, y, result, options);
     }
 
     /**
@@ -117,6 +179,7 @@ namespace alpaka::blas::onHost
     void nrm2(auto& queue, concepts::VectorView auto const& x, concepts::VectorView auto& result, Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(x)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(result)>();
         internal::validateScalarResult(x, result, "nrm2");
         internal::Nrm2Fn::call(queue, x, result, options);
     }
@@ -135,6 +198,7 @@ namespace alpaka::blas::onHost
     void asum(auto& queue, concepts::VectorView auto const& x, concepts::VectorView auto& result, Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(x)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(result)>();
         internal::validateScalarResult(x, result, "asum");
         internal::AsumFn::call(queue, x, result, options);
     }
@@ -156,6 +220,7 @@ namespace alpaka::blas::onHost
         Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(x)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(result)>();
         internal::validateScalarResult(x, result, "iamax");
         internal::IamaxFn::call(queue, x, result, options);
     }
@@ -191,6 +256,7 @@ namespace alpaka::blas::onHost
         Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(A)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(y)>();
         internal::validateGemv(A, x, y);
         internal::GemvFn::call(queue, alpha, A, x, beta, y, options);
     }
@@ -219,6 +285,7 @@ namespace alpaka::blas::onHost
         Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(A)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(C)>();
         internal::validateGemm(A, B, C);
         internal::GemmFn::call(queue, alpha, A, B, beta, C, options);
     }
@@ -250,6 +317,7 @@ namespace alpaka::blas::onHost
         Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(A)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(C)>();
         auto const ad = internal::makeBatchedMatrixDescriptor(A);
         auto const bd = internal::makeBatchedMatrixDescriptor(B);
         auto const cd = internal::makeBatchedMatrixDescriptor(C);
@@ -292,10 +360,10 @@ namespace alpaka::blas::onHost
         Options options = {})
     {
         internal::validateScalarSupport<internal::Value_t<ALPAKA_TYPEOF(A)>>();
+        internal::validateWritable<ALPAKA_TYPEOF(B)>();
         internal::validateTrsm(side, A, B);
         internal::TrsmFn::call(queue, side, alpha, A, B, options);
     }
-
     /**
      * Hermitian rank-k update.
      *
@@ -333,7 +401,7 @@ namespace alpaka::blas::onHost
      *
      * ``A`` and ``C`` must not overlap.
      *
-     * The real-valued counterpart is the standard BLAS ``syrk`` (real symmetric rank-k), not yet provided here.
+     * The real-valued counterpart is the standard BLAS ``syrk`` (real symmetric rank-k).
      *
      * @param queue alpaka queue that defines when the work runs.
      * @param alpha real scalar multiplier for the rank-k product.
@@ -374,5 +442,77 @@ namespace alpaka::blas::onHost
             return;
         }
         internal::HerkFn::call(queue, alpha, A, beta, C, options);
+    }
+
+    /**
+     * Symmetric rank-k update.
+     *
+     * Computes the selected triangle of ``C = alpha * op(A) * transpose(op(A)) + beta * C`` where ``M = op(A)`` has
+     * shape ``n x k`` and ``C`` is ``n x n``.
+     *
+     * Only real scalar types (``float``, ``double``) are supported. Complex symmetric rank-k is intentionally not
+     * exposed here; the complex Hermitian rank-k counterpart is the standard BLAS ``herk`` routine (``C =
+     * alpha * op(A) * op(A)^H + beta * C`` with ``op(A)^H`` the conjugate transpose), provided by this library.
+     *
+     * ``A`` is a general dense matrix and may be annotated ``transposed(A)`` or ``conjTransposed(A)``. For real
+     * operands ``conjTransposed(A)`` is equivalent to ``transposed(A)`` (conjugation is the identity on real types)
+     * and is normalized to the transposed operation. ``C`` must carry an explicit ``upper(C)`` or ``lower(C)``
+     * selection; the opposite triangle and any padding are left unchanged. Transpose and unit-diagonal annotations on
+     * ``C`` are rejected.
+     *
+     * The coefficients are converted exactly once at this public entry into the canonical scalar type of the
+     * operands; the backends receive the already-converted values and never re-cast them.
+     *
+     * Degenerate cases are handled without touching the operands that must not be read:
+     * - ``n == 0`` is a no-op and no data is accessed at all.
+     * - ``k == 0`` or ``alpha == 0`` produce ``beta * C`` on the selected triangle; ``A`` is never read.
+     * - ``beta == 0`` writes ``alpha * op(A) * transpose(op(A))`` to the selected triangle; the old content of the
+     *   triangle is not read.
+     *
+     * ``A`` and ``C`` must not alias (no overlapping storage).
+     *
+     * @param queue alpaka queue that defines when the work runs.
+     * @param alpha real scalar multiplier for the rank-k product.
+     * @param A input matrix, optionally ``transposed(A)`` or ``conjTransposed(A)``.
+     * @param beta real scalar multiplier applied to the selected triangle of the existing ``C``.
+     * @param C input/output result matrix, annotated ``upper(C)`` or ``lower(C)``.
+     * @param options optional backend hints.
+     */
+    void syrk(
+        auto& queue,
+        auto alpha,
+        concepts::MatrixView auto const& A,
+        auto beta,
+        concepts::MatrixView auto& C,
+        Options options = {})
+        requires(
+            RealScalar<std::remove_cv_t<internal::Value_t<ALPAKA_TYPEOF(A)>>>
+            && std::same_as<
+                std::remove_cv_t<internal::Value_t<ALPAKA_TYPEOF(A)>>,
+                std::remove_cv_t<internal::Value_t<ALPAKA_TYPEOF(C)>>>
+            && RealScalar<std::remove_cv_t<decltype(alpha)>> && RealScalar<std::remove_cv_t<decltype(beta)>>
+            && !std::is_const_v<alpaka::GetValueType_t<alpaka::blas::detail::unannotated_t<ALPAKA_TYPEOF(C)>>>)
+    {
+        using T = internal::Value_t<ALPAKA_TYPEOF(A)>;
+        using Scalar = std::remove_cv_t<T>;
+        static_assert(RealScalar<Scalar>, "syrk supports only real scalar types.");
+        internal::validateWritable<ALPAKA_TYPEOF(C)>();
+        internal::validateSyrk(A, C);
+        auto const ad = internal::makeMatrixDescriptor(A);
+        auto const n = internal::getTranspose(A) == Transpose::none ? ad.rows : ad.cols;
+        auto const k = internal::getTranspose(A) == Transpose::none ? ad.cols : ad.rows;
+        if(n == 0)
+            return; // nothing to do, no data access.
+        // Convert the scalar coefficients exactly once at the public entry; the backends receive already-converted
+        // canonical Scalar values and never re-cast them.
+        Scalar const alphaScalar = static_cast<Scalar>(alpha);
+        Scalar const betaScalar = static_cast<Scalar>(beta);
+        if(k == 0 || alphaScalar == Scalar{0})
+        {
+            // The result is beta * C on the selected triangle and A must not be read.
+            internal::enqueueScaleTriangle(queue, C, betaScalar);
+            return;
+        }
+        internal::SyrkFn::call(queue, alphaScalar, A, betaScalar, C, options);
     }
 } // namespace alpaka::blas::onHost

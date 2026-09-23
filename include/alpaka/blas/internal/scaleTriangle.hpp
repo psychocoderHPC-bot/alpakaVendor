@@ -13,8 +13,9 @@ namespace alpaka::blas::internal
      *
      * Only the selected triangle of ``C`` is touched; the opposite triangle and padding are left unchanged.
      * When ``beta == 0`` the old content of the triangle is not read, the entries are only overwritten
-     * with zeros. This implements the degenerate ``k == 0`` (empty rank-k product) herk semantics without
-     * touching ``A`` at all: the selected triangle becomes ``beta * C``.
+     * with zeros. This implements the degenerate ``k == 0`` / ``alpha == 0`` rank-k semantics (both the complex
+     * Hermitian ``herk`` and the real symmetric ``syrk``) without touching ``A`` at all: the selected triangle
+     * becomes ``beta * C``.
      *
      * For complex ``C`` the diagonal stays real: ``beta`` is a real scalar, so the real (or zero) diagonal is
      * scaled in its real part only and its imaginary part remains zero.
@@ -60,19 +61,6 @@ namespace alpaka::blas::internal
         }
     };
 
-    /** Leading-dimension width of the vendor BLAS herk of the backend that owns ``queue``.
-     *
-     * The herk dispatch headers narrow every leading dimension through this width before calling the vendor tool:
-     * host/cuda/hip use the 32-bit CBLAS/cuBLAS/rocBLAS ``int``, while the oneMKL C++ API takes ``int64_t``. The
-     * degenerate triangle-scale branch applies the same fence, so its metadata checks never diverge from the
-     * ``k > 0`` vendored path of the same backend.
-     */
-    template<typename T_Queue>
-    using HerkLdInt_t = std::conditional_t<
-        std::is_same_v<std::remove_cvref_t<decltype(alpaka::getApi(std::declval<T_Queue&>()))>, alpaka::api::OneApi>,
-        std::int64_t,
-        int>;
-
     /** Scale (or zero) the selected triangle of ``C`` in place on the device/queue of ``queue``.
      *
      * The operation is enqueued and asynchronous like any other BLAS call. ``A`` is never accessed.
@@ -82,11 +70,12 @@ namespace alpaka::blas::internal
      * ``beta == 0`` zeroes the selected triangle without reading its previous values.
      *
      * The kernel traverses one row index per work item, so any row count up to ``UINT32_MAX`` is representable; the
-     * only remaining guard rejects metadata beyond the 64-bit descriptor envelope, which is shared with the vendor
-     * herk paths. The leading dimension is narrowed through the same vendor-int gate (see ``HerkLdInt_t``) as the
-     * non-degenerate herk dispatch on the same backend: ``int64`` on oneMKL (which uses 64-bit dimensions),
-     * ``checkedCast<int>`` on host/cuda/hip (whose vendor herk rejects ``ld > 2^31 - 1``), so a degenerate
-     * ``k == 0`` / ``alpha == 0`` call never diverges from the ``k > 0`` path of its own backend.
+     * only remaining guard rejects metadata beyond that index domain. The leading dimension is narrowed through the
+     * same vendor-int gate as the non-degenerate rank-k dispatch of the owning backend: 64-bit on oneMKL (which uses
+     * 64-bit dimensions), ``checkedCast<int>`` on host/cuda/hip (whose vendor rank-k rejects ``ld > 2^31 - 1``), so a
+     * degenerate ``k == 0`` / ``alpha == 0`` call never diverges from the ``k > 0`` path of its own backend. The
+     * metadata guards run before the ``beta == 1`` no-op return, so a degenerate call rejects exactly the same
+     * oversized metadata as its backend's ``k > 0`` dispatch even when it enqueues no kernel.
      *
      * @param queue alpaka queue that defines when the work runs.
      * @param C input/output result matrix, annotated ``upper(C)`` or ``lower(C)``.
@@ -94,32 +83,38 @@ namespace alpaka::blas::internal
      */
     inline void enqueueScaleTriangle(auto& queue, concepts::MatrixView auto& C, auto beta)
     {
-        using T = Value_t<ALPAKA_TYPEOF(C)>;
+        using T = std::remove_cv_t<Value_t<ALPAKA_TYPEOF(C)>>;
         auto const cd = makeMatrixDescriptor(C);
         std::int64_t const n = cd.rows;
         if(n == 0)
             return;
+        // Reject dimensions/leading dimensions that cannot be represented safely. The kernel traverses one row index
+        // per work item, so the row count must fit the (uint32_t) index domain of the alpaka frame specification;
+        // unlike the old n*n square domain this bound holds for any n, no quadratic overflow exists. The kernel index
+        // math only ever produces row/col indices below n, so the pitch bytes (size_t) are exact by construction:
+        // cd.ld was derived in makeMatrixDescriptor from the pitch divided by sizeof(T), hence
+        // cd.ld * sizeof(T) <= original pitch <= PTRDIFF_MAX. The row pitch must still fit the vendor integer width so
+        // the degenerate branch stays aligned with the vendor rank-k paths: host/cuda/hip narrow to int, while
+        // oneAPI/oneMKL keeps 64-bit leading dimensions.
+        if(n > std::numeric_limits<std::uint32_t>::max())
+            throw std::invalid_argument("rank-k scale: number of rows is too large.");
+        std::int64_t const ld = [&]
+        {
+            if constexpr(std::same_as<ALPAKA_TYPEOF(queue.getDevice().getApi()), alpaka::api::OneApi>)
+                return cd.ld; // oneMKL uses std::int64_t dimensions; no narrowing required.
+            else
+                return static_cast<std::int64_t>(checkedCast<int>(cd.ld, "rank-k scale C ld"));
+        }();
         using Real = Real_t<T>;
         auto const betaR = static_cast<Real>(beta);
         if(betaR == Real{1})
-            return; // true no-op: the selected triangle must stay byte-identical (incl. a complex diagonal imag).
-        // The kernel's index domain is uint32_t: the row range must fit. With a 1D row index there is no quadratic
-        // n*n overflow like the old full-square domain; only n > UINT32_MAX needs rejection. The leading dimension
-        // is narrowed through the same vendor-int gate as the k>0 dispatch of this backend (see HerkLdInt_t): no
-        // 64-bit fence is imposed on the degenerate branch beyond what the backend's own herk accepts.
-        if(n > std::numeric_limits<std::uint32_t>::max())
-            throw std::invalid_argument("herk scale: number of rows is too large.");
+            return; // true no-op: selected triangle stays byte-identical (incl. a complex diagonal imaginary part).
         auto const nU = static_cast<std::uint32_t>(n);
-        // The degenerate branch promises the same metadata fence as the backend's non-degenerate herk dispatch:
-        // oneMKL takes int64 leading dimensions while host/cuda/hip take 32-bit vendor ints, so an enormously
-        // pitched C must be rejected here exactly when the k>0 path of the same backend would reject it.
-        auto const ldChecked
-            = static_cast<std::int64_t>(checkedCast<HerkLdInt_t<ALPAKA_TYPEOF(queue)>>(cd.ld, "herk scale C ld"));
         auto const extent = alpaka::Vec<std::uint32_t, 1u>{nU};
         auto const cv = alpaka::makeMdSpan(
             static_cast<T*>(cd.mutPtr),
             alpaka::Vec<std::uint32_t, 2u>{nU, nU},
-            alpaka::Vec<std::size_t, 2u>{static_cast<std::size_t>(ldChecked) * sizeof(T), sizeof(T)});
+            alpaka::Vec<std::size_t, 2u>{static_cast<std::size_t>(ld) * sizeof(T), sizeof(T)});
         auto const frameSpec = alpaka::onHost::getFrameSpec(queue.getDevice(), alpaka::exec::anyExecutor, extent);
         queue.enqueue(frameSpec, alpaka::KernelBundle{ScaleTriangleKernel{}, cv, n, getTriangle(C), betaR});
     }
