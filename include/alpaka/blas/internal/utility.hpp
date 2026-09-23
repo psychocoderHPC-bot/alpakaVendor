@@ -150,6 +150,8 @@ namespace alpaka::blas::internal
         auto const& base = getView(view);
         auto const ex = alpaka::onHost::getExtents(base);
         auto const pt = alpaka::onHost::getPitches(base);
+        if(pt.x() % sizeof(Value_t<View>) != 0u)
+            throw std::invalid_argument("Vector pitch must be a multiple of the element size.");
         auto const stride = pt.x() / sizeof(Value_t<View>);
         return VectorDescriptor{
             .constPtr = static_cast<void const*>(alpaka::onHost::data(base)),

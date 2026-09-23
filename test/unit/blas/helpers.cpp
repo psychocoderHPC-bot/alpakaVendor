@@ -4,6 +4,7 @@
  */
 
 #include <alpakaTest/deviceHelper.hpp>
+#include <cstddef>
 #include <stdexcept>
 #include <vector>
 
@@ -11,6 +12,43 @@
 #include "test.hpp"
 
 using namespace alpakaVendor::test;
+
+namespace
+{
+    /** Minimal 1-D view stub used to exercise the vector pitch validation.
+     *
+     * alpaka3 normalizes the innermost byte pitch of 1-D MdSpan/View instances to `sizeof(value_type)`,
+     * therefore a real 1-D mdspan can never expose a non-element-multiple pitch. This stub mimics the byte
+     * pitch a padded/adapted 1-D view would report.
+     */
+    struct PaddedVectorView
+    {
+        using value_type = float;
+
+        float* ptr = nullptr;
+        std::size_t pitchBytes = sizeof(float);
+
+        static consteval uint32_t dim()
+        {
+            return 1u;
+        }
+
+        auto getExtents() const
+        {
+            return alpaka::Vec<uint32_t, 1u>{4u};
+        }
+
+        auto getPitches() const
+        {
+            return alpaka::Vec<std::size_t, 1u>{pitchBytes};
+        }
+
+        float* data() const
+        {
+            return ptr;
+        }
+    };
+} // namespace
 
 TEMPLATE_LIST_TEST_CASE("blas annotations and metadata", "[unit][blas][annotations]", TestBackends)
 {
@@ -93,4 +131,23 @@ TEMPLATE_LIST_TEST_CASE(
     CHECK_THROWS_AS(
         alpaka::blas::internal::makeBatchedMatrixDescriptor(misalignedBatchOnlyPitch),
         std::invalid_argument);
+}
+
+TEMPLATE_LIST_TEST_CASE(
+    "blas vector descriptors reject pitches that are not multiples of the element size",
+    "[unit][blas][layout]",
+    TestBackends)
+{
+    auto device = getDeviceOrSkipTest(TestType::makeDict());
+    auto storage = alpaka::onHost::allocUnified<float>(device, 16u);
+
+    // Positive control: an element-multiple pitch is accepted and converted to an element stride.
+    auto validView = PaddedVectorView{storage.data(), 2u * sizeof(float)};
+    auto validDesc = alpaka::blas::internal::makeVectorDescriptor(validView);
+    CHECK(validDesc.n == 4);
+    CHECK(validDesc.inc == 2);
+
+    // A pitch of 2*sizeof(float)+1 bytes cannot be expressed as a whole element stride.
+    auto misalignedView = PaddedVectorView{storage.data(), 2u * sizeof(float) + 1u};
+    CHECK_THROWS_AS(alpaka::blas::internal::makeVectorDescriptor(misalignedView), std::invalid_argument);
 }
