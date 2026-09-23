@@ -86,4 +86,14 @@ TEMPLATE_LIST_TEST_CASE(
     CHECK_THROWS_AS(
         alpaka::blas::internal::makeBatchedMatrixDescriptor(misalignedBatchPitch),
         std::invalid_argument);
+
+    // Element-multiple row pitch but a non-multiple batch pitch: the row pitch check passes and the
+    // batch pitch branch must reject the view.
+    auto misalignedBatchOnlyPitch = alpaka::makeMdSpan(
+        buffer.data(),
+        alpaka::Vec<uint32_t, 3u>{2u, 3u, 4u},
+        alpaka::Vec<std::size_t, 3u>{36u * sizeof(float) + 2u, 6u * sizeof(float), sizeof(float)});
+    CHECK_THROWS_AS(
+        alpaka::blas::internal::makeBatchedMatrixDescriptor(misalignedBatchOnlyPitch),
+        std::invalid_argument);
 }

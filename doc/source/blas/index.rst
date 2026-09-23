@@ -32,7 +32,7 @@ The wrappers work directly with alpaka mdspan-like buffers and views:
 - 3D views are treated as ``[batch, row, column]`` for strided batched GEMM
 
 As in alpaka, the last index is the contiguous one. For a matrix ``A(rows, cols)``, ``A[{r, c}]`` means row ``r`` and
-column ``c``. Row, column and batch byte pitches must be exact multiples of the element size; non-multiple pitches throw
+column ``c``. Row and batch byte pitches must be exact multiples of the element size; non-multiple pitches throw
 ``std::invalid_argument``.
 
 Quick example
