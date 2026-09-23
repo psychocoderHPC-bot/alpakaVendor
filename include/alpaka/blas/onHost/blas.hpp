@@ -6,6 +6,7 @@
 #pragma once
 
 #include "alpaka/blas/internal/api/blas.hpp"
+#include "alpaka/blas/internal/scaleTriangle.hpp"
 
 namespace alpaka::blas::onHost
 {
@@ -362,5 +363,78 @@ namespace alpaka::blas::onHost
         internal::validateWritable<ALPAKA_TYPEOF(B)>();
         internal::validateTrsm(side, A, B);
         internal::TrsmFn::call(queue, side, alpha, A, B, options);
+    }
+
+    /**
+     * Symmetric rank-k update.
+     *
+     * Computes the selected triangle of ``C = alpha * op(A) * transpose(op(A)) + beta * C`` where ``M = op(A)`` has
+     * shape ``n x k`` and ``C`` is ``n x n``.
+     *
+     * Only real scalar types (``float``, ``double``) are supported. Complex symmetric rank-k is intentionally not
+     * exposed here; the complex Hermitian rank-k counterpart is the standard BLAS ``herk`` routine (``C =
+     * alpha * op(A) * op(A)^H + beta * C`` with ``op(A)^H`` the conjugate transpose), which is not provided by this
+     * library.
+     *
+     * ``A`` is a general dense matrix and may be annotated ``transposed(A)`` or ``conjTransposed(A)``. For real
+     * operands ``conjTransposed(A)`` is equivalent to ``transposed(A)`` (conjugation is the identity on real types)
+     * and is normalized to the transposed operation. ``C`` must carry an explicit ``upper(C)`` or ``lower(C)``
+     * selection; the opposite triangle and any padding are left unchanged. Transpose and unit-diagonal annotations on
+     * ``C`` are rejected.
+     *
+     * The coefficients are converted exactly once at this public entry into the canonical scalar type of the
+     * operands; the backends receive the already-converted values and never re-cast them.
+     *
+     * Degenerate cases are handled without touching the operands that must not be read:
+     * - ``n == 0`` is a no-op and no data is accessed at all.
+     * - ``k == 0`` or ``alpha == 0`` produce ``beta * C`` on the selected triangle; ``A`` is never read.
+     * - ``beta == 0`` writes ``alpha * op(A) * transpose(op(A))`` to the selected triangle; the old content of the
+     *   triangle is not read.
+     *
+     * ``A`` and ``C`` must not alias (no overlapping storage).
+     *
+     * @param queue alpaka queue that defines when the work runs.
+     * @param alpha real scalar multiplier for the rank-k product.
+     * @param A input matrix, optionally ``transposed(A)`` or ``conjTransposed(A)``.
+     * @param beta real scalar multiplier applied to the selected triangle of the existing ``C``.
+     * @param C input/output result matrix, annotated ``upper(C)`` or ``lower(C)``.
+     * @param options optional backend hints.
+     */
+    void syrk(
+        auto& queue,
+        auto alpha,
+        concepts::MatrixView auto const& A,
+        auto beta,
+        concepts::MatrixView auto& C,
+        Options options = {})
+        requires(
+            RealScalar<std::remove_cv_t<internal::Value_t<ALPAKA_TYPEOF(A)>>>
+            && std::same_as<
+                std::remove_cv_t<internal::Value_t<ALPAKA_TYPEOF(A)>>,
+                std::remove_cv_t<internal::Value_t<ALPAKA_TYPEOF(C)>>>
+            && RealScalar<std::remove_cv_t<decltype(alpha)>> && RealScalar<std::remove_cv_t<decltype(beta)>>
+            && !std::is_const_v<alpaka::GetValueType_t<alpaka::blas::detail::unannotated_t<ALPAKA_TYPEOF(C)>>>)
+    {
+        using T = internal::Value_t<ALPAKA_TYPEOF(A)>;
+        using Scalar = std::remove_cv_t<T>;
+        static_assert(RealScalar<Scalar>, "syrk supports only real scalar types.");
+        internal::validateWritable<ALPAKA_TYPEOF(C)>();
+        internal::validateSyrk(A, C);
+        auto const ad = internal::makeMatrixDescriptor(A);
+        auto const n = internal::getTranspose(A) == Transpose::none ? ad.rows : ad.cols;
+        auto const k = internal::getTranspose(A) == Transpose::none ? ad.cols : ad.rows;
+        if(n == 0)
+            return; // nothing to do, no data access.
+        // Convert the scalar coefficients exactly once at the public entry; the backends receive already-converted
+        // canonical Scalar values and never re-cast them.
+        Scalar const alphaScalar = static_cast<Scalar>(alpha);
+        Scalar const betaScalar = static_cast<Scalar>(beta);
+        if(k == 0 || alphaScalar == Scalar{0})
+        {
+            // The result is beta * C on the selected triangle and A must not be read.
+            internal::enqueueScaleTriangle(queue, C, betaScalar);
+            return;
+        }
+        internal::SyrkFn::call(queue, alphaScalar, A, betaScalar, C, options);
     }
 } // namespace alpaka::blas::onHost

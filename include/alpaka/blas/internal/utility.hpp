@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <stdexcept>
 #include <string>
 #include <type_traits>
 
@@ -21,11 +22,33 @@ namespace alpaka::blas::internal
     using alpaka::blas::detail::getTriangle;
     using alpaka::blas::detail::getView;
 
+    /** Scalar type of a BLAS operand view.
+     *
+     * ``Value_t`` preserves cv-qualifiers: a const-element input view keeps its const element type so callers can
+     * distinguish read-only operands from writable ones. Routines that dispatch on the scalar type derive a
+     * routine-local unqualified scalar with ``std::remove_cv_t<Value_t<T>>``; the writable-operand guard
+     * ``validateWritable()`` rejects a const-element view on an operand that is written in place.
+     */
     template<typename T>
     using Value_t = alpaka::GetValueType_t<detail::unannotated_t<T>>;
 
     template<typename T>
     constexpr bool isSupportedScalar_v = Scalar<Value_t<T>>;
+
+    /** Compile-time guard: a BLAS operand that is written in place must be a view with non-const element type.
+     *
+     * ``Value_t`` preserves cv-qualifiers, so backend dispatch derives its unqualified scalar locally with
+     * ``std::remove_cv_t<Value_t<T>>``. Without this guard, a const-element view passed to a writable operand would
+     * select the same backend branch and the backend would write through a pointer the caller declared read-only
+     * (UB).
+     */
+    template<typename T>
+    constexpr void validateWritable()
+    {
+        static_assert(
+            !std::is_const_v<alpaka::GetValueType_t<detail::unannotated_t<T>>>,
+            "The BLAS operand must be a writable view (element type must not be const).");
+    }
 
     template<typename T>
     constexpr void validateWritable()
@@ -289,6 +312,36 @@ namespace alpaka::blas::internal
         }
         else if(ad.rows != bd.cols)
             throw std::invalid_argument("trsm right requires A.rows == B.cols.");
+    }
+
+    template<typename T_A, typename T_C>
+    inline void validateSyrk(T_A const& A, T_C const& C)
+    {
+        static_assert(
+            std::same_as<std::remove_cv_t<Value_t<T_A>>, std::remove_cv_t<Value_t<T_C>>>,
+            "syrk requires A and C to have the same element type.");
+        static_assert(
+            !std::is_const_v<alpaka::GetValueType_t<detail::unannotated_t<T_C>>>,
+            "syrk requires a writable C view (element type must not be const).");
+        auto const ad = makeMatrixDescriptor(A);
+        auto const cd = makeMatrixDescriptor(C);
+        // A is a general dense matrix: reject triangle/unit-diagonal annotations.
+        if(ad.triangle != Triangle::full)
+            throw std::invalid_argument("syrk requires a general dense A without a triangle annotation.");
+        if(ad.diagonal != Diagonal::nonUnit)
+            throw std::invalid_argument("syrk requires a general dense A without a unit-diagonal annotation.");
+        // C must carry an explicit upper/lower selection.
+        if(cd.triangle == Triangle::full)
+            throw std::invalid_argument("syrk requires upper(C) or lower(C).");
+        // C must not be transposed or unit-diagonal.
+        if(cd.transpose != Transpose::none)
+            throw std::invalid_argument("syrk rejects a transposed C.");
+        if(cd.diagonal != Diagonal::nonUnit)
+            throw std::invalid_argument("syrk rejects a unit-diagonal C.");
+        // op(A) is n x k; C must be n x n.
+        auto const n = getTranspose(A) == Transpose::none ? ad.rows : ad.cols;
+        if(cd.rows != n || cd.cols != n)
+            throw std::invalid_argument("syrk requires C to be n x n where n is op(A) rows.");
     }
 
     template<typename T>

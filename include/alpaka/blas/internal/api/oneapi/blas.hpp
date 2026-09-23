@@ -111,8 +111,11 @@ namespace alpaka::blas::internal
 
         if(options.algorithm == Algorithm::fastest)
         {
-            // oneMKL alternate compute modes are currently exposed only for single-precision real and complex GEMM
-            // paths; double-precision requests intentionally fall back to the routine default.
+            // oneMKL exposes alternate compute modes for more than single-precision real and complex GEMM: they are
+            // available for SYRK (and other routines) as well. Both the compute mode and the underlying library
+            // support are routine- and device-dependent, so a request for an alternate mode is best-effort: if a
+            // routine or device does not support it, oneMKL falls back to the routine default. Double-precision
+            // requests intentionally stay with the routine default here.
             if constexpr(
                 std::same_as<std::remove_cv_t<T>, float>
                 || std::same_as<std::remove_cv_t<T>, alpaka::math::Complex<float>>)
@@ -598,6 +601,70 @@ namespace alpaka::blas::internal
                     ad.ld,
                     oneMklPtr<T>(bd.mutPtr),
                     bd.ld,
+                    deps);
+            });
+    }
+
+    template<alpaka::concepts::DeviceKind T_DeviceKind>
+    void alpakaFnDispatch(
+        SyrkFn::Spec<alpaka::api::OneApi, T_DeviceKind>,
+        auto&& queue,
+        auto alpha,
+        auto const& A,
+        auto beta,
+        auto& C,
+        Options options)
+    {
+        using T = std::remove_cv_t<Value_t<ALPAKA_TYPEOF(A)>>;
+        static_assert(RealScalar<T>, "syrk supports only real scalar types.");
+        // The public syrk entry converts alpha/beta once; the dispatch receives canonical T scalars already and must
+        // not re-cast them (convert-once semantics).
+        static_assert(std::same_as<decltype(alpha), T>, "syrk alpha must arrive as the canonical scalar.");
+        static_assert(std::same_as<decltype(beta), T>, "syrk beta must arrive as the canonical scalar.");
+        auto const ad = makeMatrixDescriptor(A);
+        auto const cd = makeMatrixDescriptor(C);
+        auto const n = ad.transpose == Transpose::none ? ad.rows : ad.cols;
+        auto const k = ad.transpose == Transpose::none ? ad.cols : ad.rows;
+        // For real operands conjugateTransposed is the identity-conjugated transpose: normalize to transposed.
+        auto const op
+            = ad.transpose == Transpose::none ? oneapi::mkl::transpose::nontrans : oneapi::mkl::transpose::trans;
+        // oneMKL constructs its value_or_pointer from the scalar by value; no conversion is needed because alpha/beta
+        // already have the canonical element type T.
+        auto const alphaT = alpha;
+        auto const betaT = beta;
+        auto const computeMode = oneMklComputeModeFor<T>(options);
+        queue.enqueueNativeFn(
+            [=](sycl::queue q) -> sycl::event
+            {
+                auto deps = std::vector<sycl::event>{q.ext_oneapi_submit_barrier()};
+                if(computeMode.has_value())
+                    return oneapi::mkl::blas::row_major::syrk(
+                        q,
+                        toOneMklUplo(cd.triangle),
+                        op,
+                        n,
+                        k,
+                        alphaT,
+                        oneMklPtr<T>(ad.constPtr),
+                        ad.ld,
+                        betaT,
+                        oneMklPtr<T>(cd.mutPtr),
+                        cd.ld,
+                        *computeMode,
+                        deps);
+
+                return oneapi::mkl::blas::row_major::syrk(
+                    q,
+                    toOneMklUplo(cd.triangle),
+                    op,
+                    n,
+                    k,
+                    alphaT,
+                    oneMklPtr<T>(ad.constPtr),
+                    ad.ld,
+                    betaT,
+                    oneMklPtr<T>(cd.mutPtr),
+                    cd.ld,
                     deps);
             });
     }

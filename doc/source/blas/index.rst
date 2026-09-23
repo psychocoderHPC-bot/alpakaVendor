@@ -20,7 +20,7 @@ What is available today?
 
 - **Level 1:** ``copy``, ``swap``, ``scal``, ``axpy``, ``dot``, ``dotc``, ``nrm2``, ``asum``, ``iamax``
 - **Level 2:** ``gemv``
-- **Level 3:** ``gemm``, ``stridedBatchedGemm``, ``trsm``
+- **Level 3:** ``gemm``, ``stridedBatchedGemm``, ``syrk``, ``trsm``
 
 How to read the BLAS views
 --------------------------
@@ -82,6 +82,40 @@ The public helpers let you describe how an existing view should be interpreted:
 These annotations can be stacked. For example, ``unitDiag(lower(A))`` marks a lower-triangular matrix whose diagonal is
 implicitly one, and ``conjTransposed(A)`` asks BLAS to use the Hermitian transpose without creating a temporary copy.
 Complex ``gemv`` with ``conjTransposed(A)`` is currently not available on the CUDA/cuBLAS and HIP/rocBLAS row-major paths.
+
+SYRK: symmetric rank-k update
+-----------------------------
+
+``syrk`` computes the selected triangle of
+
+``C = alpha * op(A) * op(A)^T + beta * C``
+
+with ``op(A)`` the transpose (or, for real operands equivalently, the conjugate transpose) of the stored matrix
+``A`` of shape ``n x k`` and ``C`` ``n x n``; only the triangle selected by ``upper(C)`` or ``lower(C)`` is updated.
+The formula is the real symmetric rank-k form: the second factor is the plain transpose ``op(A)^T`` (never a
+Hermitian/conjugate-transposed right-hand side, which is the domain of the complex ``herk`` routine). The opposite
+triangle and any padding are left unchanged.
+
+- Real scalar types ``float`` and ``double`` only.
+- ``A`` may be annotated ``transposed(A)`` or ``conjTransposed(A)``; for real operands ``conjTransposed(A)`` is
+  equivalent to ``transposed(A)`` (conjugation is the identity on real types) and is normalized to the transposed
+  operation.
+- ``alpha`` and ``beta`` are always converted exactly once, at the public entry, into the canonical scalar type of the
+  operands; the backend dispatch receives the already-converted values and never re-casts them.
+- Backends: OpenBLAS/CBLAS host, CUDA/cuBLAS, HIP/rocBLAS, and oneAPI/oneMKL.
+- Row-major handling: the views follow alpaka's memory layout (last index is contiguous), and the wrappers perform the
+  necessary layout translation for the vendor libraries.
+
+Options for SYRK (what each backend honors):
+
+- OpenBLAS/CBLAS host: ``Precision`` and ``Algorithm`` are accepted and currently ignored.
+- CUDA/cuBLAS: ``Precision::exact`` selects the pedantic math mode for single-precision SYRK. ``Algorithm``:
+  ``deterministic`` disables cuBLAS atomics for the SYRK call and ``fastest`` enables them.
+- HIP/rocBLAS: ``Precision`` is accepted and currently ignored. ``Algorithm``: ``deterministic`` disables rocBLAS
+  atomics for the SYRK call and ``fastest`` enables them when the rocBLAS handle exposes atomics mode.
+- oneAPI/oneMKL: ``Precision::exact`` requests the oneMKL standard compute mode and ``Algorithm::deterministic`` the
+  standard mode as well; ``Algorithm::fastest`` requests the oneMKL alternate compute mode for single-precision SYRK
+  when oneMKL supports it (best-effort, falling back to the routine default otherwise).
 
 Backend notes
 -------------
