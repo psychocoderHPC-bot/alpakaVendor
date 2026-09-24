@@ -171,8 +171,9 @@ handling is:
      - Accepted, currently ignored.
      - Accepted, currently ignored.
    * - CUDA / cuBLAS
-     - ``exact`` selects pedantic math mode for single-precision real and complex routines. GEMM and strided batched GEMM
-       also pass pedantic compute types for ``float``, ``double``, and complex variants.
+     - ``exact`` selects pedantic math mode for single-precision real and complex routines; this math mode is applied to
+       every dispatched routine, including the Level-1 calls. GEMM and strided batched GEMM also pass pedantic compute
+       types for ``float``, ``double``, and complex variants.
      - ``deterministic`` disables cuBLAS atomics and ``fastest`` enables them for GEMM, strided batched GEMM, GEMV, and
        TRSM.
    * - HIP / rocBLAS
@@ -180,9 +181,15 @@ handling is:
      - ``deterministic`` disables rocBLAS atomics and ``fastest`` enables them for GEMM, strided batched GEMM, GEMV, and
        TRSM when the rocBLAS handle exposes atomics mode.
    * - oneAPI / oneMKL
-     - ``exact`` requests oneMKL standard compute mode for GEMM, batched GEMM, and TRSM.
+     - ``exact`` requests oneMKL standard compute mode for GEMM, batched GEMM, and TRSM. GEMV ignores ``Options``, so
+       ``exact`` has no effect there.
      - ``deterministic`` requests standard compute mode. ``fastest`` requests oneMKL alternate compute mode for
-       single-precision real and complex GEMM, batched GEMM, and TRSM paths when oneMKL supports it.
+       single-precision real and complex GEMM, batched GEMM, and TRSM paths when oneMKL supports it. GEMV ignores
+       ``Options``, so no algorithm hint is applied there.
+
+Routine applicability is best-effort and routine-specific: the per-routine notes above and in the SYRK/herk sections
+are authoritative. In particular, the oneAPI GEMV path ignores all ``Options``, while the CUDA math mode selected by
+``Precision`` is applied to every dispatched single-precision routine, Level-1 included.
 
 .. -- begin issue-37 Options subsection --
 
