@@ -63,6 +63,26 @@ generic native alpaka CPU queues.
 Views passed to the 2D and 3D BLAS routines must be row-major dense: the column stride must be exactly 1 and the leading
 dimension (the row stride) must be at least ``cols``. Violations raise ``std::invalid_argument``.
 
+Queues and lifetimes
+--------------------
+
+All ``alpaka::blas`` routines are enqueued on the alpaka queue. On a default (non-blocking) queue they complete
+**asynchronously**: the call only enqueues work and may return before the computation has completed. A blocking queue
+returns only after the enqueued work has completed.
+
+- Wait for the queue with ``alpaka::onHost::wait(queue)`` before reading any result, including the single-element
+  reduction or result buffers that receive the outputs of ``dot``, ``nrm2``, ``asum``, and ``iamax``.
+- Every operand view (inputs and outputs) and the result buffer must stay alive until the enqueued work has completed.
+  Views written by the backend must also be mutable.
+- The wrappers capture the operand views and data pointers when the routine is called; resizing, reallocating, or
+  destroying a buffer before the queue is waited leaves the enqueued work with dangling pointers.
+
+For accelerator backends the result buffer must additionally be accessible to the backend that writes it. CUDA and HIP
+compute the scalar result on the device, so the buffer must be device-accessible. For oneAPI ``iamax``, oneMKL writes
+the index on the device and a subsequent host task dereferences it
+(``include/alpaka/blas/internal/api/oneapi/blas.hpp``), so the result buffer must also be host-accessible (for example
+shared or host USM). Host results are ordinary host-visible buffers.
+
 Quick example
 -------------
 

@@ -11,6 +11,17 @@
 namespace alpaka::blas::onHost
 {
     /**
+     * @note All routines in this namespace are enqueued on the supplied alpaka queue. On a default (non-blocking)
+     * queue they complete asynchronously; a blocking queue returns only after the enqueued work has completed. Wait
+     *       for the queue with ``alpaka::onHost::wait(queue)`` before reading any output. Operand views and the result
+     *       buffer must stay alive and be mutable until the enqueued work has completed; the wrappers capture the
+     * views and data pointers when the routine is called. On accelerator backends the single-element result buffer
+     * must additionally be accessible to the backend that writes it: device-accessible for CUDA/HIP, and also
+     *       host-accessible (shared or host USM) for oneAPI ``iamax``, where oneMKL writes the index on the device and
+     * a host task then dereferences it.
+     */
+
+    /**
      * Copy one vector into another.
      *
      * @param queue alpaka queue that defines when the operation executes.
@@ -214,6 +225,11 @@ namespace alpaka::blas::onHost
      * @param x input vector.
      * @param result single-element integer output view that receives the BLAS index.
      * @param options optional backend hints.
+     *
+     * @note The result buffer is written by the enqueued work, so it must outlive the queue wait and be accessible to
+     *       the backend that writes it. CUDA/HIP compute the index on the device (device-accessible required); oneAPI
+     *       ``iamax`` writes the index on the device and then dereferences it from a host task, so a shared or
+     *       host-accessible buffer is required as well.
      */
     void iamax(
         auto& queue,
