@@ -96,6 +96,52 @@ TEMPLATE_LIST_TEST_CASE("BLAS level1 real and complex vectors", "[integr][blas][
     }
 }
 
+TEMPLATE_LIST_TEST_CASE("BLAS level1 dot accepts read-only inputs", "[integr][blas][level1][dot]", TestBackends)
+{
+    auto deviceExec = getDeviceExecutorOrSkipTest(TestType::makeDict());
+    auto device = getDevice(deviceExec);
+    if constexpr(!isBlasBackendEnabledForDevice(device))
+    {
+        SKIP("No BLAS backend enabled for this alpaka API.");
+    }
+    else
+    {
+        auto queue = device.makeQueue();
+        constexpr uint32_t n = 5u;
+        auto const options = alpaka::blas::Options{
+            .precision = alpaka::blas::Precision::exact,
+            .algorithm = alpaka::blas::Algorithm::fastest};
+
+        // A read-only (const-element) input view must not be mistaken for a mismatched result type. `Value_t` is
+        // cv-preserving, so the dot result-type guard and the backend scalar derivation cv-strip both operands.
+        auto runReadOnly = [&]<typename T>()
+        {
+            auto xb = alpaka::onHost::allocUnified<T>(device, n);
+            auto yb = alpaka::onHost::allocUnified<T>(device, n);
+            fillVector(xb.data(), n);
+            fillVector(yb.data(), n);
+            auto xConst = alpaka::makeMdSpan(static_cast<T const*>(xb.data()), alpaka::Vec<std::size_t, 1u>{n});
+            auto yConst = alpaka::makeMdSpan(static_cast<T const*>(yb.data()), alpaka::Vec<std::size_t, 1u>{n});
+            auto dotRO = alpaka::onHost::allocUnified<T>(device, 1u);
+            // Must not throw std::invalid_argument("dot requires a result buffer ...").
+            alpaka::blas::onHost::dot(queue, xConst, yConst, dotRO, options);
+            alpaka::onHost::wait(queue);
+            if constexpr(alpaka::blas::ComplexScalar<T>)
+            {
+                auto const expected = blas::dotRef(xb.data(), yb.data(), n);
+                CHECK(dotRO.data()[0].real() == Catch::Approx(expected.real()).epsilon(1e-4));
+                CHECK(dotRO.data()[0].imag() == Catch::Approx(expected.imag()).epsilon(1e-4));
+            }
+            else
+                CHECK(dotRO.data()[0] == Catch::Approx(blas::dotRef(xb.data(), yb.data(), n)).epsilon(1e-4));
+        };
+        runReadOnly.template operator()<float>();
+        runReadOnly.template operator()<double>();
+        runReadOnly.template operator()<alpaka::math::Complex<float>>();
+        runReadOnly.template operator()<alpaka::math::Complex<double>>();
+    }
+}
+
 TEMPLATE_LIST_TEST_CASE("BLAS level1 dotc conjugated dot product", "[integr][blas][level1][dotc]", TestBackends)
 {
     auto deviceExec = getDeviceExecutorOrSkipTest(TestType::makeDict());

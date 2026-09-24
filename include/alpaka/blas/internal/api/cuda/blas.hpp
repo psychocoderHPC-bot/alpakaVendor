@@ -417,7 +417,7 @@ namespace alpaka::blas::internal
         auto& result,
         Options options)
     {
-        using T = Value_t<ALPAKA_TYPEOF(x)>;
+        using T = std::remove_cv_t<Value_t<ALPAKA_TYPEOF(x)>>;
         auto const xd = makeVectorDescriptor(x);
         auto const yd = makeVectorDescriptor(y);
         auto* resultPtr = alpaka::onHost::data(getView(result));
@@ -496,7 +496,7 @@ namespace alpaka::blas::internal
                 CublasHandle cublas{nativeStream};
                 auto handle = cublas.handle;
                 setMathMode<Scalar>(handle, options);
-                check(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_DEVICE), "cublasSetPointerMode");
+                CublasPointerModeGuard pointerModeGuard{handle};
                 if constexpr(std::same_as<Scalar, float>)
                     check(
                         cublasSdot(

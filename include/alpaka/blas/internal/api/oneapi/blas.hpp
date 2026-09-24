@@ -234,7 +234,7 @@ namespace alpaka::blas::internal
         auto& result,
         [[maybe_unused]] Options options)
     {
-        using T = Value_t<ALPAKA_TYPEOF(x)>;
+        using T = std::remove_cv_t<Value_t<ALPAKA_TYPEOF(x)>>;
         auto const xd = makeVectorDescriptor(x);
         auto const yd = makeVectorDescriptor(y);
         auto* resultPtr = alpaka::onHost::data(getView(result));

@@ -121,8 +121,11 @@ namespace alpaka::blas::onHost
         internal::validateSameVectorExtent(x, y, "dot");
         internal::validateScalarResult(x, result, "dot");
         // Guard the dispatch with the result element type: a mismatch must throw before any backend call is
-        // instantiated, because vendor reduction routines are typed on their scalar result pointer.
-        if constexpr(std::same_as<internal::Value_t<ALPAKA_TYPEOF(result)>, internal::Value_t<ALPAKA_TYPEOF(x)>>)
+        // instantiated, because vendor reduction routines are typed on their scalar result pointer. ``Value_t`` is
+        // cv-preserving, so both sides are compared with cv removed to accept read-only (const-element) inputs.
+        if constexpr(std::same_as<
+                         std::remove_cv_t<internal::Value_t<ALPAKA_TYPEOF(result)>>,
+                         std::remove_cv_t<internal::Value_t<ALPAKA_TYPEOF(x)>>>)
             internal::DotFn::call(queue, x, y, result, options);
         else
             throw std::invalid_argument("dot requires a result buffer with the routine's result type.");
