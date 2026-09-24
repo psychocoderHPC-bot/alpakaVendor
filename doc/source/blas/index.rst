@@ -233,3 +233,124 @@ argument to keep the public signature uniform and mark it ``[[maybe_unused]]``; 
 is read. Passing the defaults, ``backendDefault``, or any other combination therefore has no effect on host execution.
 
 .. -- end issue-37 Options subsection --
+
+.. _blas-annotations-reference:
+
+Annotations and options
+-----------------------
+
+This section is the compact reference for the enum types, their exact C++ names, and the defaults behind the
+annotation helpers. All types live in ``alpaka::blas``.
+
+Enumerations
+++++++++++++
+
+.. code-block:: cpp
+
+   namespace alpaka::blas
+   {
+       enum class Transpose { none, transposed, conjugateTransposed };
+       enum class Triangle { full, upper, lower };
+       enum class Diagonal { nonUnit, unit };
+       enum class Side { left, right };
+       enum class Precision { exact, backendDefault };
+       enum class Algorithm { backendDefault, deterministic, fastest };
+   }
+
+.. list-table:: Enum values and defaults
+   :header-rows: 1
+
+   * - Enum
+     - Values (declaration order)
+     - Default
+   * - ``Transpose``
+     - ``none``, ``transposed``, ``conjugateTransposed``
+     - ``Transpose::none``
+   * - ``Triangle``
+     - ``full``, ``upper``, ``lower``
+     - ``Triangle::full``
+   * - ``Diagonal``
+     - ``nonUnit``, ``unit``
+     - ``Diagonal::nonUnit``
+   * - ``Side``
+     - ``left``, ``right``
+     - No default; passed explicitly to ``trsm``
+   * - ``Precision``
+     - ``exact``, ``backendDefault``
+     - ``Precision::exact``
+   * - ``Algorithm``
+     - ``backendDefault``, ``deterministic``, ``fastest``
+     - ``Algorithm::backendDefault``
+
+Options
++++++++
+
+``Options`` is an aggregate and is the default argument of the execution entry points, so default-constructing it
+gives:
+
+.. code-block:: cpp
+
+   struct Options
+   {
+       Precision precision = Precision::exact;
+       Algorithm algorithm = Algorithm::backendDefault;
+   };
+
+Annotation defaults
++++++++++++++++++++
+
+The helpers wrap a view in ``AnnotatedView<T_View>``, whose members carry the interpretation and start at:
+
+.. code-block:: cpp
+
+   struct AnnotatedView
+   {
+       T_View view;
+       Transpose transpose = Transpose::none;
+       Triangle triangle = Triangle::full;   // full is the default
+       Diagonal diagonal = Diagonal::nonUnit;
+   };
+
+A plain (unannotated) view behaves exactly like those defaults: no transpose, the full matrix, and the stored
+diagonal.
+
+Helper to value mapping
++++++++++++++++++++++++
+
+.. list-table:: Annotation helpers and the enum value they set
+   :header-rows: 1
+
+   * - Helper
+     - Sets
+   * - ``transposed(A)``
+     - ``Transpose::transposed``
+   * - ``conjTransposed(A)``
+     - ``Transpose::conjugateTransposed``
+   * - ``upper(A)``
+     - ``Triangle::upper``
+   * - ``lower(A)``
+     - ``Triangle::lower``
+   * - ``unitDiag(A)``
+     - ``Diagonal::unit``
+   * - ``nonUnitDiag(A)``
+     - ``Diagonal::nonUnit``
+
+There is no helper for ``Transpose::none`` or ``Triangle::full``; leave the view unannotated, or simply do not apply
+that helper, to get the default. ``Side`` is not an annotation: it is a required argument of ``trsm``.
+
+Stacking and conflicting annotations
++++++++++++++++++++++++++++++++++++++
+
+Annotations are cumulative. Applying a second helper starts from the already-annotated view, so independent kinds
+combine, for example ``unitDiag(lower(A))`` or ``conjTransposed(upper(A))``.
+
+- Re-applying ``upper``/``lower`` or ``unitDiag``/``nonUnitDiag`` keeps the last value; the diagonal helpers therefore
+  overwrite each other. The transpose helpers also keep the last value, so ``transposed(conjTransposed(A))`` ends as
+  ``Transpose::transposed`` and ``conjTransposed(transposed(A))`` ends as ``Transpose::conjugateTransposed``.
+- Mixing ``upper()`` and ``lower()`` on the same view is rejected at the second call, which throws
+  ``std::invalid_argument``. Applying ``upper()`` after ``lower()`` throws
+  ``"Conflicting triangular annotation: lower then upper."``; applying ``lower()`` after ``upper()`` throws
+  ``"Conflicting triangular annotation: upper then lower."``
+- ``trsm`` additionally requires a triangular annotation. If neither ``upper(A)`` nor ``lower(A)`` was applied, so
+  the triangle is still ``Triangle::full``, it throws
+  ``std::invalid_argument("Triangular BLAS operations require upper(A) or lower(A).")``.

@@ -93,8 +93,11 @@ stored diagonal should be read at all.
 In this example:
 
 - ``Side::left`` means ``op(A) * X = B``
-- ``lower(triangular)`` says only the lower half matters
-- ``unitDiag(...)`` says the diagonal is implicitly one
+- ``lower(triangular)`` says only the lower half matters and sets ``Triangle::lower``
+- ``unitDiag(...)`` says the diagonal is implicitly one and sets ``Diagonal::unit``
+
+The exact enum values and the default of every annotation are listed in :ref:`blas-annotations-reference` on the BLAS
+index page.
 
 Step 6: Symmetric rank-k update (SYRK)
 --------------------------------------
