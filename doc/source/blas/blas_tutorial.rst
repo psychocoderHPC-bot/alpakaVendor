@@ -141,6 +141,15 @@ Step 8: Strided batched GEMM
 If your data already lives in a ``[batch, row, column]`` view, ``stridedBatchedGemm`` applies the same matrix product
 to every batch.
 
+The wrapper validates the operands at runtime and throws ``std::invalid_argument`` when:
+
+- the batch counts of ``A``, ``B``, and ``C`` do not match,
+- ``op(A).cols`` does not equal ``op(B).rows``, or
+- the extent of ``C`` does not match ``op(A).rows`` x ``op(B).cols``.
+
+The batch stride is taken from the view's z-pitch, so naturally contiguous batches need no extra padding. The batched
+views must be row-major dense (column stride 1).
+
 .. literalinclude:: ../../../doc/code/tutorial_blas.cpp
    :language: C++
    :start-after: //! [blas-tutorial-batched-gemm]

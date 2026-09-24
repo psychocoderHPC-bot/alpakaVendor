@@ -32,7 +32,8 @@ The wrappers work directly with alpaka mdspan-like buffers and views:
 
 - 1D views are treated as vectors
 - 2D views are treated as matrices
-- 3D views are treated as ``[batch, row, column]`` for strided batched GEMM
+- 3D views are treated as ``[batch, row, column]`` for strided batched GEMM, with the batch stride given by the view's
+  z-pitch
 
 As in alpaka, the last index is the contiguous one. For a matrix ``A(rows, cols)``, ``A[{r, c}]`` means row ``r`` and
 column ``c``. Row and batch byte pitches must be exact multiples of the element size; non-multiple pitches throw
