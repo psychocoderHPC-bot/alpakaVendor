@@ -110,6 +110,28 @@ These annotations can be stacked. For example, ``unitDiag(lower(A))`` marks a lo
 implicitly one, and ``conjTransposed(A)`` asks BLAS to use the Hermitian transpose without creating a temporary copy.
 Complex ``gemv`` with ``conjTransposed(A)`` is currently not available on the CUDA/cuBLAS and HIP/rocBLAS row-major paths.
 
+Triangular solves with ``trsm``
+-------------------------------
+
+``trsm(queue, side, alpha, A, B)`` solves a triangular system with multiple right-hand sides and overwrites ``B`` with
+the solution ``X``:
+
+- ``Side::left`` solves ``op(A) * X = alpha * B``
+- ``Side::right`` solves ``X * op(A) = alpha * B``
+
+Here ``op(A)`` is ``A``, ``transposed(A)``, or ``conjTransposed(A)`` depending on the annotation stacked onto ``A``.
+``transposed`` uses the plain transpose and ``conjTransposed`` uses the conjugate (Hermitian) transpose, so the
+transposed combinations are selected purely through annotations and no temporary copy of ``A`` is created.
+
+``A`` must be annotated with ``upper(A)`` or ``lower(A)`` to select the stored triangular half. Passing a matrix
+without such an annotation (``Triangle::full``) is rejected at runtime with ``std::invalid_argument``. The
+``unitDiag(A)`` and ``nonUnitDiag(A)`` annotations select the diagonal semantics: ``unitDiag`` treats every diagonal
+entry as implicitly one and ignores the stored values, while ``nonUnitDiag`` (the default) reads the stored diagonal.
+
+``A`` must also describe a square matrix, i.e. the order of ``op(A)`` must have equal row and column extents. ``B``
+then has to match the triangular operand: ``A.rows == B.rows`` for ``Side::left`` and ``A.rows == B.cols`` for
+``Side::right``. Violations of these requirements are reported as ``std::invalid_argument``.
+
 SYRK: symmetric rank-k update
 -----------------------------
 
