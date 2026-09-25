@@ -31,7 +31,16 @@ namespace alpaka::blas::internal
 
     inline auto toOneMklUplo(Triangle triangle)
     {
-        return triangle == Triangle::upper ? oneapi::mkl::uplo::upper : oneapi::mkl::uplo::lower;
+        switch(triangle)
+        {
+        case Triangle::upper:
+            return oneapi::mkl::uplo::upper;
+        case Triangle::lower:
+            return oneapi::mkl::uplo::lower;
+        case Triangle::full:
+            break;
+        }
+        throw std::invalid_argument("oneMKL triangle mapping requires an explicit upper(A) or lower(A) annotation.");
     }
 
     inline auto toOneMklDiag(Diagonal diagonal)
@@ -572,6 +581,7 @@ namespace alpaka::blas::internal
         Options options)
     {
         using T = Value_t<ALPAKA_TYPEOF(A)>;
+        validateTriangularAnnotation(A);
         auto const ad = makeMatrixDescriptor(A);
         auto const bd = makeMatrixDescriptor(B);
         auto alphaT = toOneMklScalar<T>(alpha);
