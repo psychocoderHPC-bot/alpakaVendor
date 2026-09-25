@@ -142,11 +142,11 @@ namespace alpaka::blas::internal
                 auto deps = std::vector<sycl::event>{q.ext_oneapi_submit_barrier()};
                 return oneapi::mkl::blas::copy(
                     q,
-                    xd.n,
+                    checkedVendorInt<alpaka::api::OneApi>(xd.n, "n"),
                     oneMklPtr<T>(xd.constPtr),
-                    xd.inc,
+                    checkedVendorInt<alpaka::api::OneApi>(xd.inc, "inc"),
                     oneMklPtr<T>(yd.mutPtr),
-                    yd.inc,
+                    checkedVendorInt<alpaka::api::OneApi>(yd.inc, "inc"),
                     deps);
             });
     }
@@ -168,11 +168,11 @@ namespace alpaka::blas::internal
                 auto deps = std::vector<sycl::event>{q.ext_oneapi_submit_barrier()};
                 return oneapi::mkl::blas::swap(
                     q,
-                    xd.n,
+                    checkedVendorInt<alpaka::api::OneApi>(xd.n, "n"),
                     oneMklPtr<T>(xd.mutPtr),
-                    xd.inc,
+                    checkedVendorInt<alpaka::api::OneApi>(xd.inc, "inc"),
                     oneMklPtr<T>(yd.mutPtr),
-                    yd.inc,
+                    checkedVendorInt<alpaka::api::OneApi>(yd.inc, "inc"),
                     deps);
             });
     }
@@ -192,7 +192,7 @@ namespace alpaka::blas::internal
             [=](sycl::queue q) -> sycl::event
             {
                 auto deps = std::vector<sycl::event>{q.ext_oneapi_submit_barrier()};
-                return oneapi::mkl::blas::scal(q, xd.n, alphaT, oneMklPtr<T>(xd.mutPtr), xd.inc, deps);
+                return oneapi::mkl::blas::scal(q, checkedVendorInt<alpaka::api::OneApi>(xd.n, "n"), alphaT, oneMklPtr<T>(xd.mutPtr), checkedVendorInt<alpaka::api::OneApi>(xd.inc, "inc"), deps);
             });
     }
 
@@ -215,12 +215,12 @@ namespace alpaka::blas::internal
                 auto deps = std::vector<sycl::event>{q.ext_oneapi_submit_barrier()};
                 return oneapi::mkl::blas::axpy(
                     q,
-                    xd.n,
+                    checkedVendorInt<alpaka::api::OneApi>(xd.n, "n"),
                     alphaT,
                     oneMklPtr<T>(xd.constPtr),
-                    xd.inc,
+                    checkedVendorInt<alpaka::api::OneApi>(xd.inc, "inc"),
                     oneMklPtr<T>(yd.mutPtr),
-                    yd.inc,
+                    checkedVendorInt<alpaka::api::OneApi>(yd.inc, "inc"),
                     deps);
             });
     }
@@ -245,21 +245,21 @@ namespace alpaka::blas::internal
                 if constexpr(ComplexScalar<T>)
                     return oneapi::mkl::blas::dotu(
                         q,
-                        xd.n,
+                        checkedVendorInt<alpaka::api::OneApi>(xd.n, "n"),
                         oneMklPtr<T>(xd.constPtr),
-                        xd.inc,
+                        checkedVendorInt<alpaka::api::OneApi>(xd.inc, "inc"),
                         oneMklPtr<T>(yd.constPtr),
-                        yd.inc,
+                        checkedVendorInt<alpaka::api::OneApi>(yd.inc, "inc"),
                         oneMklValuePtr(resultPtr),
                         deps);
                 else
                     return oneapi::mkl::blas::dot(
                         q,
-                        xd.n,
+                        checkedVendorInt<alpaka::api::OneApi>(xd.n, "n"),
                         oneMklPtr<T>(xd.constPtr),
-                        xd.inc,
+                        checkedVendorInt<alpaka::api::OneApi>(xd.inc, "inc"),
                         oneMklPtr<T>(yd.constPtr),
-                        yd.inc,
+                        checkedVendorInt<alpaka::api::OneApi>(yd.inc, "inc"),
                         oneMklValuePtr(resultPtr),
                         deps);
             });
@@ -285,21 +285,21 @@ namespace alpaka::blas::internal
                 if constexpr(ComplexScalar<Scalar>)
                     return oneapi::mkl::blas::dotc(
                         q,
-                        xd.n,
+                        checkedVendorInt<alpaka::api::OneApi>(xd.n, "n"),
                         oneMklPtr<Scalar>(xd.constPtr),
-                        xd.inc,
+                        checkedVendorInt<alpaka::api::OneApi>(xd.inc, "inc"),
                         oneMklPtr<Scalar>(yd.constPtr),
-                        yd.inc,
+                        checkedVendorInt<alpaka::api::OneApi>(yd.inc, "inc"),
                         oneMklValuePtr(resultPtr),
                         deps);
                 else
                     return oneapi::mkl::blas::dot(
                         q,
-                        xd.n,
+                        checkedVendorInt<alpaka::api::OneApi>(xd.n, "n"),
                         oneMklPtr<Scalar>(xd.constPtr),
-                        xd.inc,
+                        checkedVendorInt<alpaka::api::OneApi>(xd.inc, "inc"),
                         oneMklPtr<Scalar>(yd.constPtr),
-                        yd.inc,
+                        checkedVendorInt<alpaka::api::OneApi>(yd.inc, "inc"),
                         oneMklValuePtr(resultPtr),
                         deps);
             });
@@ -322,9 +322,9 @@ namespace alpaka::blas::internal
                 auto deps = std::vector<sycl::event>{q.ext_oneapi_submit_barrier()};
                 return oneapi::mkl::blas::nrm2(
                     q,
-                    xd.n,
+                    checkedVendorInt<alpaka::api::OneApi>(xd.n, "n"),
                     oneMklPtr<T>(xd.constPtr),
-                    xd.inc,
+                    checkedVendorInt<alpaka::api::OneApi>(xd.inc, "inc"),
                     oneMklValuePtr(resultPtr),
                     deps);
             });
@@ -347,9 +347,9 @@ namespace alpaka::blas::internal
                 auto deps = std::vector<sycl::event>{q.ext_oneapi_submit_barrier()};
                 return oneapi::mkl::blas::asum(
                     q,
-                    xd.n,
+                    checkedVendorInt<alpaka::api::OneApi>(xd.n, "n"),
                     oneMklPtr<T>(xd.constPtr),
-                    xd.inc,
+                    checkedVendorInt<alpaka::api::OneApi>(xd.inc, "inc"),
                     oneMklValuePtr(resultPtr),
                     deps);
             });
@@ -372,9 +372,9 @@ namespace alpaka::blas::internal
                 auto deps = std::vector<sycl::event>{q.ext_oneapi_submit_barrier()};
                 auto event = oneapi::mkl::blas::iamax(
                     q,
-                    xd.n,
+                    checkedVendorInt<alpaka::api::OneApi>(xd.n, "n"),
                     oneMklPtr<T>(xd.constPtr),
-                    xd.inc,
+                    checkedVendorInt<alpaka::api::OneApi>(xd.inc, "inc"),
                     oneMklValuePtr(resultPtr),
                     deps);
                 return q.submit(
@@ -386,7 +386,7 @@ namespace alpaka::blas::internal
                         handler.host_task(
                             [=]()
                             {
-                                if(xd.n > 0)
+                                if(checkedVendorInt<alpaka::api::OneApi>(xd.n, "n") > 0)
                                     ++resultPtr[0];
                                 else
                                     resultPtr[0] = 0;
@@ -419,16 +419,16 @@ namespace alpaka::blas::internal
                 return oneapi::mkl::blas::row_major::gemv(
                     q,
                     toOneMklTranspose(ad.transpose),
-                    ad.rows,
-                    ad.cols,
+                    checkedVendorInt<alpaka::api::OneApi>(ad.rows, "rows"),
+                    checkedVendorInt<alpaka::api::OneApi>(ad.cols, "cols"),
                     alphaT,
                     oneMklPtr<T>(ad.constPtr),
-                    ad.ld,
+                    checkedVendorInt<alpaka::api::OneApi>(ad.ld, "ld"),
                     oneMklPtr<T>(xd.constPtr),
-                    xd.inc,
+                    checkedVendorInt<alpaka::api::OneApi>(xd.inc, "inc"),
                     betaT,
                     oneMklPtr<T>(yd.mutPtr),
-                    yd.inc,
+                    checkedVendorInt<alpaka::api::OneApi>(yd.inc, "inc"),
                     deps);
             });
     }
@@ -460,17 +460,19 @@ namespace alpaka::blas::internal
                         q,
                         toOneMklTranspose(ad.transpose),
                         toOneMklTranspose(bd.transpose),
-                        cd.rows,
-                        cd.cols,
-                        ad.transpose == Transpose::none ? ad.cols : ad.rows,
+                        checkedVendorInt<alpaka::api::OneApi>(cd.rows, "rows"),
+                        checkedVendorInt<alpaka::api::OneApi>(cd.cols, "cols"),
+                        checkedVendorInt<alpaka::api::OneApi>(
+                        ad.transpose == Transpose::none ? checkedVendorInt<alpaka::api::OneApi>(ad.cols, "cols") : checkedVendorInt<alpaka::api::OneApi>(ad.rows, "rows"),
+                        "gemm k"),
                         alphaT,
                         oneMklPtr<T>(ad.constPtr),
-                        ad.ld,
+                        checkedVendorInt<alpaka::api::OneApi>(ad.ld, "ld"),
                         oneMklPtr<T>(bd.constPtr),
-                        bd.ld,
+                        checkedVendorInt<alpaka::api::OneApi>(bd.ld, "ld"),
                         betaT,
                         oneMklPtr<T>(cd.mutPtr),
-                        cd.ld,
+                        checkedVendorInt<alpaka::api::OneApi>(cd.ld, "ld"),
                         *computeMode,
                         deps);
 
@@ -478,17 +480,19 @@ namespace alpaka::blas::internal
                     q,
                     toOneMklTranspose(ad.transpose),
                     toOneMklTranspose(bd.transpose),
-                    cd.rows,
-                    cd.cols,
-                    ad.transpose == Transpose::none ? ad.cols : ad.rows,
+                    checkedVendorInt<alpaka::api::OneApi>(cd.rows, "rows"),
+                    checkedVendorInt<alpaka::api::OneApi>(cd.cols, "cols"),
+                    checkedVendorInt<alpaka::api::OneApi>(
+                        ad.transpose == Transpose::none ? checkedVendorInt<alpaka::api::OneApi>(ad.cols, "cols") : checkedVendorInt<alpaka::api::OneApi>(ad.rows, "rows"),
+                        "gemm k"),
                     alphaT,
                     oneMklPtr<T>(ad.constPtr),
-                    ad.ld,
+                    checkedVendorInt<alpaka::api::OneApi>(ad.ld, "ld"),
                     oneMklPtr<T>(bd.constPtr),
-                    bd.ld,
+                    checkedVendorInt<alpaka::api::OneApi>(bd.ld, "ld"),
                     betaT,
                     oneMklPtr<T>(cd.mutPtr),
-                    cd.ld,
+                    checkedVendorInt<alpaka::api::OneApi>(cd.ld, "ld"),
                     deps);
             });
     }
@@ -520,21 +524,23 @@ namespace alpaka::blas::internal
                         q,
                         toOneMklTranspose(ad.transpose),
                         toOneMklTranspose(bd.transpose),
-                        cd.rows,
-                        cd.cols,
-                        ad.transpose == Transpose::none ? ad.cols : ad.rows,
+                        checkedVendorInt<alpaka::api::OneApi>(cd.rows, "rows"),
+                        checkedVendorInt<alpaka::api::OneApi>(cd.cols, "cols"),
+                        checkedVendorInt<alpaka::api::OneApi>(
+                        ad.transpose == Transpose::none ? checkedVendorInt<alpaka::api::OneApi>(ad.cols, "cols") : checkedVendorInt<alpaka::api::OneApi>(ad.rows, "rows"),
+                        "gemm k"),
                         alphaT,
                         oneMklPtr<T>(ad.constPtr),
-                        ad.ld,
-                        ad.batchStride,
+                        checkedVendorInt<alpaka::api::OneApi>(ad.ld, "ld"),
+                        checkedVendorInt<alpaka::api::OneApi>(ad.batchStride, "batchStride"),
                         oneMklPtr<T>(bd.constPtr),
-                        bd.ld,
-                        bd.batchStride,
+                        checkedVendorInt<alpaka::api::OneApi>(bd.ld, "ld"),
+                        checkedVendorInt<alpaka::api::OneApi>(bd.batchStride, "batchStride"),
                         betaT,
                         oneMklPtr<T>(cd.mutPtr),
-                        cd.ld,
-                        cd.batchStride,
-                        cd.batchCount,
+                        checkedVendorInt<alpaka::api::OneApi>(cd.ld, "ld"),
+                        checkedVendorInt<alpaka::api::OneApi>(cd.batchStride, "batchStride"),
+                        checkedVendorInt<alpaka::api::OneApi>(cd.batchCount, "batchCount"),
                         *computeMode,
                         deps);
 
@@ -542,21 +548,23 @@ namespace alpaka::blas::internal
                     q,
                     toOneMklTranspose(ad.transpose),
                     toOneMklTranspose(bd.transpose),
-                    cd.rows,
-                    cd.cols,
-                    ad.transpose == Transpose::none ? ad.cols : ad.rows,
+                    checkedVendorInt<alpaka::api::OneApi>(cd.rows, "rows"),
+                    checkedVendorInt<alpaka::api::OneApi>(cd.cols, "cols"),
+                    checkedVendorInt<alpaka::api::OneApi>(
+                        ad.transpose == Transpose::none ? checkedVendorInt<alpaka::api::OneApi>(ad.cols, "cols") : checkedVendorInt<alpaka::api::OneApi>(ad.rows, "rows"),
+                        "gemm k"),
                     alphaT,
                     oneMklPtr<T>(ad.constPtr),
-                    ad.ld,
-                    ad.batchStride,
+                    checkedVendorInt<alpaka::api::OneApi>(ad.ld, "ld"),
+                    checkedVendorInt<alpaka::api::OneApi>(ad.batchStride, "batchStride"),
                     oneMklPtr<T>(bd.constPtr),
-                    bd.ld,
-                    bd.batchStride,
+                    checkedVendorInt<alpaka::api::OneApi>(bd.ld, "ld"),
+                    checkedVendorInt<alpaka::api::OneApi>(bd.batchStride, "batchStride"),
                     betaT,
                     oneMklPtr<T>(cd.mutPtr),
-                    cd.ld,
-                    cd.batchStride,
-                    cd.batchCount,
+                    checkedVendorInt<alpaka::api::OneApi>(cd.ld, "ld"),
+                    checkedVendorInt<alpaka::api::OneApi>(cd.batchStride, "batchStride"),
+                    checkedVendorInt<alpaka::api::OneApi>(cd.batchCount, "batchCount"),
                     deps);
             });
     }
@@ -587,13 +595,13 @@ namespace alpaka::blas::internal
                         toOneMklUplo(ad.triangle),
                         toOneMklTranspose(ad.transpose),
                         toOneMklDiag(ad.diagonal),
-                        bd.rows,
-                        bd.cols,
+                        checkedVendorInt<alpaka::api::OneApi>(bd.rows, "rows"),
+                        checkedVendorInt<alpaka::api::OneApi>(bd.cols, "cols"),
                         alphaT,
                         oneMklPtr<T>(ad.constPtr),
-                        ad.ld,
+                        checkedVendorInt<alpaka::api::OneApi>(ad.ld, "ld"),
                         oneMklPtr<T>(bd.mutPtr),
-                        bd.ld,
+                        checkedVendorInt<alpaka::api::OneApi>(bd.ld, "ld"),
                         *computeMode,
                         deps);
 
@@ -603,13 +611,13 @@ namespace alpaka::blas::internal
                     toOneMklUplo(ad.triangle),
                     toOneMklTranspose(ad.transpose),
                     toOneMklDiag(ad.diagonal),
-                    bd.rows,
-                    bd.cols,
+                    checkedVendorInt<alpaka::api::OneApi>(bd.rows, "rows"),
+                    checkedVendorInt<alpaka::api::OneApi>(bd.cols, "cols"),
                     alphaT,
                     oneMklPtr<T>(ad.constPtr),
-                    ad.ld,
+                    checkedVendorInt<alpaka::api::OneApi>(ad.ld, "ld"),
                     oneMklPtr<T>(bd.mutPtr),
-                    bd.ld,
+                    checkedVendorInt<alpaka::api::OneApi>(bd.ld, "ld"),
                     deps);
             });
     }
@@ -633,8 +641,12 @@ namespace alpaka::blas::internal
         // Logical (post-op) extents: op(A) is n x k. The public wrapper intercepts the degenerate n == 0 / k == 0
         // cases (including the beta scaling semantics) before dispatch, so this routine is only called for a
         // well-defined update (n, k > 0).
-        auto const n = ad.transpose == Transpose::none ? ad.rows : ad.cols;
-        auto const k = ad.transpose == Transpose::none ? ad.cols : ad.rows;
+        auto const n = checkedVendorInt<alpaka::api::OneApi>(
+                        ad.transpose == Transpose::none ? checkedVendorInt<alpaka::api::OneApi>(ad.rows, "rows") : checkedVendorInt<alpaka::api::OneApi>(ad.cols, "cols"),
+                        "gemm k");
+        auto const k = checkedVendorInt<alpaka::api::OneApi>(
+                        ad.transpose == Transpose::none ? checkedVendorInt<alpaka::api::OneApi>(ad.cols, "cols") : checkedVendorInt<alpaka::api::OneApi>(ad.rows, "rows"),
+                        "gemm k");
         // oneMKL herk expects real scalars (value_or_pointer<Treal>), so use REAL coefficients, not the complex type.
         auto const alphaT = static_cast<Real_t<T>>(alpha);
         auto const betaT = static_cast<Real_t<T>>(beta);
@@ -659,10 +671,10 @@ namespace alpaka::blas::internal
                     k,
                     alphaT,
                     oneMklPtr<T>(ad.constPtr),
-                    ad.ld,
+                    checkedVendorInt<alpaka::api::OneApi>(ad.ld, "ld"),
                     betaT,
                     oneMklPtr<T>(cd.mutPtr),
-                    cd.ld,
+                    checkedVendorInt<alpaka::api::OneApi>(cd.ld, "ld"),
                     computeMode,
                     deps);
             });
@@ -686,8 +698,12 @@ namespace alpaka::blas::internal
         static_assert(std::same_as<decltype(beta), T>, "syrk beta must arrive as the canonical scalar.");
         auto const ad = makeMatrixDescriptor(A);
         auto const cd = makeMatrixDescriptor(C);
-        auto const n = ad.transpose == Transpose::none ? ad.rows : ad.cols;
-        auto const k = ad.transpose == Transpose::none ? ad.cols : ad.rows;
+        auto const n = checkedVendorInt<alpaka::api::OneApi>(
+                        ad.transpose == Transpose::none ? checkedVendorInt<alpaka::api::OneApi>(ad.rows, "rows") : checkedVendorInt<alpaka::api::OneApi>(ad.cols, "cols"),
+                        "gemm k");
+        auto const k = checkedVendorInt<alpaka::api::OneApi>(
+                        ad.transpose == Transpose::none ? checkedVendorInt<alpaka::api::OneApi>(ad.cols, "cols") : checkedVendorInt<alpaka::api::OneApi>(ad.rows, "rows"),
+                        "gemm k");
         // For real operands conjugateTransposed is the identity-conjugated transpose: normalize to transposed.
         auto const op
             = ad.transpose == Transpose::none ? oneapi::mkl::transpose::nontrans : oneapi::mkl::transpose::trans;
@@ -709,10 +725,10 @@ namespace alpaka::blas::internal
                         k,
                         alphaT,
                         oneMklPtr<T>(ad.constPtr),
-                        ad.ld,
+                        checkedVendorInt<alpaka::api::OneApi>(ad.ld, "ld"),
                         betaT,
                         oneMklPtr<T>(cd.mutPtr),
-                        cd.ld,
+                        checkedVendorInt<alpaka::api::OneApi>(cd.ld, "ld"),
                         *computeMode,
                         deps);
 
@@ -724,10 +740,10 @@ namespace alpaka::blas::internal
                     k,
                     alphaT,
                     oneMklPtr<T>(ad.constPtr),
-                    ad.ld,
+                    checkedVendorInt<alpaka::api::OneApi>(ad.ld, "ld"),
                     betaT,
                     oneMklPtr<T>(cd.mutPtr),
-                    cd.ld,
+                    checkedVendorInt<alpaka::api::OneApi>(cd.ld, "ld"),
                     deps);
             });
     }
