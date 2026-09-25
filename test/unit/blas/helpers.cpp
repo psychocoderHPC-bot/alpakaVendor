@@ -179,7 +179,8 @@ TEMPLATE_LIST_TEST_CASE(
 }
 
 TEMPLATE_LIST_TEST_CASE(
-    "blas vector descriptors reject a zero element stride (inc == 0) and batched batchStride below the minimal batch span",
+    "blas vector descriptors reject a zero element stride (inc == 0) and batched batchStride below the minimal batch "
+    "span",
     "[unit][blas][layout]",
     TestBackends)
 {

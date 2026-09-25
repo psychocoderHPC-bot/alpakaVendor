@@ -213,16 +213,19 @@ namespace alpaka::blas::internal
         auto const ex = alpaka::onHost::getExtents(base);
         auto const pt = alpaka::onHost::getPitches(base);
         auto const strideCol = pitchToElements(pt.x(), sizeof(Value_t<View>), "Column pitch (x axis)");
-        if(strideCol != 1u)
+        if(strideCol != 1)
             throw std::invalid_argument("Only row-major dense 2D views are supported.");
+        // Compare the converted row pitch against the extent in a single signed 64-bit domain: checkedCast proves the
+        // extent fits std::int64_t (throwing otherwise), so no unsigned operand reaches the relational operator.
+        auto const cols = checkedCast<std::int64_t>(ex.x(), "matrix cols");
         auto const strideRow = pitchToElements(pt.y(), sizeof(Value_t<View>), "Row pitch (y axis)");
-        if(strideRow < ex.x())
+        if(strideRow < cols)
             throw std::invalid_argument("Invalid row-major leading dimension.");
         return MatrixDescriptor{
             .constPtr = static_cast<void const*>(alpaka::onHost::data(base)),
             .mutPtr = const_cast<void*>(static_cast<void const*>(alpaka::onHost::data(base))),
             .rows = checkedCast<std::int64_t>(ex.y(), "matrix rows"),
-            .cols = checkedCast<std::int64_t>(ex.x(), "matrix cols"),
+            .cols = cols,
             .ld = strideRow,
             .transpose = getTranspose(view),
             .triangle = getTriangle(view),
@@ -238,11 +241,15 @@ namespace alpaka::blas::internal
         auto const ex = alpaka::onHost::getExtents(base);
         auto const pt = alpaka::onHost::getPitches(base);
         auto const strideCol = pitchToElements(pt.x(), sizeof(Value_t<View>), "Column pitch (x axis)");
-        if(strideCol != 1u)
+        if(strideCol != 1)
             throw std::invalid_argument("Only row-major dense 3D batched views are supported.");
         auto const strideRow = pitchToElements(pt.y(), sizeof(Value_t<View>), "Row pitch (y axis)");
         auto const strideBatch = pitchToElements(pt.z(), sizeof(Value_t<View>), "Batch pitch (z axis)");
-        if(strideRow < ex.x())
+        // Both the extent and the pitch comparisons live in the signed 64-bit domain: checkedCast rejects an extent
+        // that does not fit std::int64_t, so the relational operators below never mix signed and unsigned operands.
+        auto const rowsForBatch = checkedCast<std::int64_t>(ex.y(), "matrix rows");
+        auto const colsForBatch = checkedCast<std::int64_t>(ex.x(), "matrix cols");
+        if(strideRow < colsForBatch)
             throw std::invalid_argument("Invalid batched matrix leading dimension.");
         // The last element a batch can access is at (rows - 1) * strideRow + (cols - 1) (row-major, strideRow >=
         // cols). The minimal exclusive span that keeps the next batch from overlapping is therefore
@@ -250,8 +257,6 @@ namespace alpaka::blas::internal
         // A smaller batch stride makes consecutive batches overlap. The product is computed overflow-safely
         // (saturating at INT64_MAX): a saturated product is larger than any representable batchStride, so the
         // rejection below still fires.
-        auto const rowsForBatch = checkedCast<std::int64_t>(ex.y(), "matrix rows");
-        auto const colsForBatch = checkedCast<std::int64_t>(ex.x(), "matrix cols");
         std::int64_t const rowSpan = rowsForBatch - 1;
         auto const minSpan
             = (rowSpan != 0 && strideRow > (std::numeric_limits<std::int64_t>::max() - colsForBatch) / rowSpan)
@@ -264,8 +269,8 @@ namespace alpaka::blas::internal
         BatchedMatrixDescriptor desc{};
         desc.constPtr = static_cast<void const*>(alpaka::onHost::data(base));
         desc.mutPtr = const_cast<void*>(static_cast<void const*>(alpaka::onHost::data(base)));
-        desc.rows = checkedCast<std::int64_t>(ex.y(), "matrix rows");
-        desc.cols = checkedCast<std::int64_t>(ex.x(), "matrix cols");
+        desc.rows = rowsForBatch;
+        desc.cols = colsForBatch;
         desc.ld = strideRow;
         desc.transpose = getTranspose(view);
         desc.triangle = getTriangle(view);
