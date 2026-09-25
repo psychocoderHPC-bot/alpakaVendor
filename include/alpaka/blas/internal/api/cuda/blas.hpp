@@ -138,7 +138,16 @@ namespace alpaka::blas::internal
 
     inline auto toCublasFill(Triangle triangle)
     {
-        return triangle == Triangle::upper ? CUBLAS_FILL_MODE_UPPER : CUBLAS_FILL_MODE_LOWER;
+        switch(triangle)
+        {
+        case Triangle::upper:
+            return CUBLAS_FILL_MODE_UPPER;
+        case Triangle::lower:
+            return CUBLAS_FILL_MODE_LOWER;
+        case Triangle::full:
+            break;
+        }
+        throw std::invalid_argument("cuBLAS triangle mapping requires an explicit upper(A) or lower(A) annotation.");
     }
 
     inline auto toCublasDiag(Diagonal diagonal)
@@ -153,7 +162,16 @@ namespace alpaka::blas::internal
 
     inline auto swappedTriangle(Triangle triangle)
     {
-        return triangle == Triangle::upper ? Triangle::lower : Triangle::upper;
+        switch(triangle)
+        {
+        case Triangle::upper:
+            return Triangle::lower;
+        case Triangle::lower:
+            return Triangle::upper;
+        case Triangle::full:
+            break;
+        }
+        throw std::invalid_argument("Triangular annotation must not be Triangle::full.");
     }
 
     template<typename T>
@@ -942,6 +960,7 @@ namespace alpaka::blas::internal
         Options options)
     {
         using T = Value_t<ALPAKA_TYPEOF(A)>;
+        validateTriangularAnnotation(A);
         auto const ad = makeMatrixDescriptor(A);
         auto const bd = makeMatrixDescriptor(B);
         auto const bdColsInt = checkedVendorInt<alpaka::api::Cuda>(bd.cols, "cols");

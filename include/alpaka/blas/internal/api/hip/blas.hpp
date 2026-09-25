@@ -77,7 +77,16 @@ namespace alpaka::blas::internal
 
     inline auto toRocblasFill(Triangle triangle)
     {
-        return triangle == Triangle::upper ? rocblas_fill_upper : rocblas_fill_lower;
+        switch(triangle)
+        {
+        case Triangle::upper:
+            return rocblas_fill_upper;
+        case Triangle::lower:
+            return rocblas_fill_lower;
+        case Triangle::full:
+            break;
+        }
+        throw std::invalid_argument("rocBLAS triangle mapping requires an explicit upper(A) or lower(A) annotation.");
     }
 
     inline auto toRocblasDiag(Diagonal diagonal)
@@ -92,7 +101,16 @@ namespace alpaka::blas::internal
 
     inline auto swappedTriangle(Triangle triangle)
     {
-        return triangle == Triangle::upper ? Triangle::lower : Triangle::upper;
+        switch(triangle)
+        {
+        case Triangle::upper:
+            return Triangle::lower;
+        case Triangle::lower:
+            return Triangle::upper;
+        case Triangle::full:
+            break;
+        }
+        throw std::invalid_argument("Triangular annotation must not be Triangle::full.");
     }
 
     /**
@@ -1009,6 +1027,7 @@ namespace alpaka::blas::internal
         Options options)
     {
         using T = Value_t<ALPAKA_TYPEOF(A)>;
+        validateTriangularAnnotation(A);
         auto const ad = makeMatrixDescriptor(A);
         auto const bd = makeMatrixDescriptor(B);
         auto const bdColsInt = checkedVendorInt<alpaka::api::Hip>(bd.cols, "cols");

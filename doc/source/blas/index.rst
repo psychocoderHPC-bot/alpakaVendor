@@ -130,6 +130,10 @@ These annotations can be stacked. For example, ``unitDiag(lower(A))`` marks a lo
 implicitly one, and ``conjTransposed(A)`` asks BLAS to use the Hermitian transpose without creating a temporary copy.
 Complex ``gemv`` with ``conjTransposed(A)`` is currently not available on the CUDA/cuBLAS and HIP/rocBLAS row-major paths.
 
+Triangular operations such as ``trsm`` require an explicit ``upper(A)`` or ``lower(A)`` annotation. Passing an
+unannotated or ``Triangle::full`` matrix is rejected with ``std::invalid_argument`` before any backend call, so the
+stored triangular half is never guessed.
+
 Triangular solves with ``trsm``
 -------------------------------
 
