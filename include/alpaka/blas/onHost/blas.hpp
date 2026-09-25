@@ -356,9 +356,10 @@ namespace alpaka::blas::onHost
      * For ``side == Side::left`` this solves ``op(A) * X = alpha * B`` and overwrites ``B`` with ``X``.
      * For ``side == Side::right`` it solves ``X * op(A) = alpha * B``.
      *
-     * ``A`` should usually be wrapped in one or more annotations:
+     * ``A`` must be wrapped in an explicit triangle annotation and should usually also carry the other annotations:
      *
-     * - ``upper(A)`` or ``lower(A)`` to select the stored triangular half
+     * - ``upper(A)`` or ``lower(A)`` to select the stored triangular half (required; ``Triangle::full`` is rejected
+     *   with ``std::invalid_argument``)
      * - ``unitDiag(A)`` or ``nonUnitDiag(A)`` to describe the diagonal
      * - optionally ``transposed(A)`` or ``conjTransposed(A)``
      *

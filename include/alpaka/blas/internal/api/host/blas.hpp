@@ -252,7 +252,16 @@ namespace alpaka::blas::internal
 
     inline CBLAS_UPLO toCblasUplo(Triangle triangle)
     {
-        return triangle == Triangle::upper ? CblasUpper : CblasLower;
+        switch(triangle)
+        {
+        case Triangle::upper:
+            return CblasUpper;
+        case Triangle::lower:
+            return CblasLower;
+        case Triangle::full:
+            break;
+        }
+        throw std::invalid_argument("CBLAS triangle mapping requires an explicit upper(A) or lower(A) annotation.");
     }
 
     inline CBLAS_DIAG toCblasDiag(Diagonal diagonal)
@@ -681,6 +690,7 @@ namespace alpaka::blas::internal
         [[maybe_unused]] Options options)
     {
         using T = Value_t<ALPAKA_TYPEOF(A)>;
+        validateTriangularAnnotation(A);
         auto const ad = makeMatrixDescriptor(A);
         auto const bd = makeMatrixDescriptor(B);
         queue.enqueueNativeFn(
