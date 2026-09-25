@@ -276,15 +276,18 @@ namespace alpaka::blas::internal
         using T = Value_t<ALPAKA_TYPEOF(x)>;
         auto const xd = makeVectorDescriptor(x);
         auto const yd = makeVectorDescriptor(y);
+        auto const nInt = checkedVendorInt<alpaka::api::Host>(xd.n, "n");
+        auto const incxInt = checkedVendorInt<alpaka::api::Host>(xd.inc, "inc");
+        auto const incyInt = checkedVendorInt<alpaka::api::Host>(yd.inc, "inc");
         queue.enqueueNativeFn(
             [=](auto)
             {
                 OpenBlas<T>::copy(
-                    int(xd.n),
+                    nInt,
                     static_cast<T const*>(xd.constPtr),
-                    int(xd.inc),
+                    incxInt,
                     static_cast<T*>(yd.mutPtr),
-                    int(yd.inc));
+                    incyInt);
             });
     }
 
@@ -299,16 +302,12 @@ namespace alpaka::blas::internal
         using T = Value_t<ALPAKA_TYPEOF(x)>;
         auto const xd = makeVectorDescriptor(x);
         auto const yd = makeVectorDescriptor(y);
+        auto const nInt = checkedVendorInt<alpaka::api::Host>(xd.n, "n");
+        auto const incxInt = checkedVendorInt<alpaka::api::Host>(xd.inc, "inc");
+        auto const incyInt = checkedVendorInt<alpaka::api::Host>(yd.inc, "inc");
         queue.enqueueNativeFn(
             [=](auto)
-            {
-                OpenBlas<T>::swap(
-                    int(xd.n),
-                    static_cast<T*>(xd.mutPtr),
-                    int(xd.inc),
-                    static_cast<T*>(yd.mutPtr),
-                    int(yd.inc));
-            });
+            { OpenBlas<T>::swap(nInt, static_cast<T*>(xd.mutPtr), incxInt, static_cast<T*>(yd.mutPtr), incyInt); });
     }
 
     template<alpaka::concepts::DeviceKind T_DeviceKind>
@@ -321,9 +320,10 @@ namespace alpaka::blas::internal
     {
         using T = Value_t<ALPAKA_TYPEOF(x)>;
         auto const xd = makeVectorDescriptor(x);
+        auto const nInt = checkedVendorInt<alpaka::api::Host>(xd.n, "n");
+        auto const incxInt = checkedVendorInt<alpaka::api::Host>(xd.inc, "inc");
         queue.enqueueNativeFn(
-            [=](auto)
-            { OpenBlas<T>::scal(int(xd.n), static_cast<T>(alpha), static_cast<T*>(xd.mutPtr), int(xd.inc)); });
+            [=](auto) { OpenBlas<T>::scal(nInt, static_cast<T>(alpha), static_cast<T*>(xd.mutPtr), incxInt); });
     }
 
     template<alpaka::concepts::DeviceKind T_DeviceKind>
@@ -338,16 +338,19 @@ namespace alpaka::blas::internal
         using T = Value_t<ALPAKA_TYPEOF(x)>;
         auto const xd = makeVectorDescriptor(x);
         auto const yd = makeVectorDescriptor(y);
+        auto const nInt = checkedVendorInt<alpaka::api::Host>(xd.n, "n");
+        auto const incxInt = checkedVendorInt<alpaka::api::Host>(xd.inc, "inc");
+        auto const incyInt = checkedVendorInt<alpaka::api::Host>(yd.inc, "inc");
         queue.enqueueNativeFn(
             [=](auto)
             {
                 OpenBlas<T>::axpy(
-                    int(xd.n),
+                    nInt,
                     static_cast<T>(alpha),
                     static_cast<T const*>(xd.constPtr),
-                    int(xd.inc),
+                    incxInt,
                     static_cast<T*>(yd.mutPtr),
-                    int(yd.inc));
+                    incyInt);
             });
     }
 
@@ -364,15 +367,18 @@ namespace alpaka::blas::internal
         auto const xd = makeVectorDescriptor(x);
         auto const yd = makeVectorDescriptor(y);
         auto* resultPtr = alpaka::onHost::data(getView(result));
+        auto const nInt = checkedVendorInt<alpaka::api::Host>(xd.n, "n");
+        auto const incxInt = checkedVendorInt<alpaka::api::Host>(xd.inc, "inc");
+        auto const incyInt = checkedVendorInt<alpaka::api::Host>(yd.inc, "inc");
         queue.enqueueNativeFn(
             [=](auto)
             {
                 resultPtr[0] = OpenBlas<T>::dot(
-                    int(xd.n),
+                    nInt,
                     static_cast<T const*>(xd.constPtr),
-                    int(xd.inc),
+                    incxInt,
                     static_cast<T const*>(yd.constPtr),
-                    int(yd.inc));
+                    incyInt);
             });
     }
 
@@ -415,9 +421,10 @@ namespace alpaka::blas::internal
         using T = Value_t<ALPAKA_TYPEOF(x)>;
         auto const xd = makeVectorDescriptor(x);
         auto* resultPtr = alpaka::onHost::data(getView(result));
+        auto const nInt = checkedVendorInt<alpaka::api::Host>(xd.n, "n");
+        auto const incxInt = checkedVendorInt<alpaka::api::Host>(xd.inc, "inc");
         queue.enqueueNativeFn(
-            [=](auto)
-            { resultPtr[0] = OpenBlas<T>::nrm2(int(xd.n), static_cast<T const*>(xd.constPtr), int(xd.inc)); });
+            [=](auto) { resultPtr[0] = OpenBlas<T>::nrm2(nInt, static_cast<T const*>(xd.constPtr), incxInt); });
     }
 
     template<alpaka::concepts::DeviceKind T_DeviceKind>
@@ -431,9 +438,10 @@ namespace alpaka::blas::internal
         using T = Value_t<ALPAKA_TYPEOF(x)>;
         auto const xd = makeVectorDescriptor(x);
         auto* resultPtr = alpaka::onHost::data(getView(result));
+        auto const nInt = checkedVendorInt<alpaka::api::Host>(xd.n, "n");
+        auto const incxInt = checkedVendorInt<alpaka::api::Host>(xd.inc, "inc");
         queue.enqueueNativeFn(
-            [=](auto)
-            { resultPtr[0] = OpenBlas<T>::asum(int(xd.n), static_cast<T const*>(xd.constPtr), int(xd.inc)); });
+            [=](auto) { resultPtr[0] = OpenBlas<T>::asum(nInt, static_cast<T const*>(xd.constPtr), incxInt); });
     }
 
     template<alpaka::concepts::DeviceKind T_DeviceKind>
@@ -447,16 +455,34 @@ namespace alpaka::blas::internal
         using T = Value_t<ALPAKA_TYPEOF(x)>;
         auto const xd = makeVectorDescriptor(x);
         auto* resultPtr = alpaka::onHost::data(getView(result));
+        auto const nInt = checkedVendorInt<alpaka::api::Host>(xd.n, "n");
+        auto const incxInt = checkedVendorInt<alpaka::api::Host>(xd.inc, "inc");
         queue.enqueueNativeFn(
-            [=](auto)
-            { resultPtr[0] = OpenBlas<T>::iamax(int(xd.n), static_cast<T const*>(xd.constPtr), int(xd.inc)); });
+            [=](auto) { resultPtr[0] = OpenBlas<T>::iamax(nInt, static_cast<T const*>(xd.constPtr), incxInt); });
     }
+
+    /** Width-narrowed integer argument set for a host GEMM call.
+     *
+     * The narrowing is performed once on the caller thread (outside the enqueued lambda) so that a value that does not
+     * fit the OpenBLAS 32-bit integer width throws ``std::invalid_argument`` synchronously to the caller instead of
+     * being captured inside a discarded non-blocking host task.
+     */
+    struct HostGemmArgs
+    {
+        int m = 0;
+        int n = 0;
+        int k = 0;
+        int lda = 0;
+        int ldb = 0;
+        int ldc = 0;
+    };
 
     template<typename T>
     static void hostGemmImpl(
         MatrixDescriptor const& A,
         MatrixDescriptor const& B,
         MatrixDescriptor const& C,
+        HostGemmArgs const& dims,
         T alpha,
         T beta)
     {
@@ -465,65 +491,80 @@ namespace alpaka::blas::internal
                 CblasRowMajor,
                 toCblasTranspose(A.transpose),
                 toCblasTranspose(B.transpose),
-                int(C.rows),
-                int(C.cols),
-                int(A.transpose == Transpose::none ? A.cols : A.rows),
+                dims.m,
+                dims.n,
+                dims.k,
                 alpha,
                 static_cast<float const*>(A.constPtr),
-                int(A.ld),
+                dims.lda,
                 static_cast<float const*>(B.constPtr),
-                int(B.ld),
+                dims.ldb,
                 beta,
                 static_cast<float*>(C.mutPtr),
-                int(C.ld));
+                dims.ldc);
         else if constexpr(std::same_as<T, double>)
             cblas_dgemm(
                 CblasRowMajor,
                 toCblasTranspose(A.transpose),
                 toCblasTranspose(B.transpose),
-                int(C.rows),
-                int(C.cols),
-                int(A.transpose == Transpose::none ? A.cols : A.rows),
+                dims.m,
+                dims.n,
+                dims.k,
                 alpha,
                 static_cast<double const*>(A.constPtr),
-                int(A.ld),
+                dims.lda,
                 static_cast<double const*>(B.constPtr),
-                int(B.ld),
+                dims.ldb,
                 beta,
                 static_cast<double*>(C.mutPtr),
-                int(C.ld));
+                dims.ldc);
         else if constexpr(std::same_as<T, alpaka::math::Complex<float>>)
             cblas_cgemm(
                 CblasRowMajor,
                 toCblasTranspose(A.transpose),
                 toCblasTranspose(B.transpose),
-                int(C.rows),
-                int(C.cols),
-                int(A.transpose == Transpose::none ? A.cols : A.rows),
+                dims.m,
+                dims.n,
+                dims.k,
                 &alpha,
                 static_cast<T const*>(A.constPtr),
-                int(A.ld),
+                dims.lda,
                 static_cast<T const*>(B.constPtr),
-                int(B.ld),
+                dims.ldb,
                 &beta,
                 static_cast<T*>(C.mutPtr),
-                int(C.ld));
+                dims.ldc);
         else
             cblas_zgemm(
                 CblasRowMajor,
                 toCblasTranspose(A.transpose),
                 toCblasTranspose(B.transpose),
-                int(C.rows),
-                int(C.cols),
-                int(A.transpose == Transpose::none ? A.cols : A.rows),
+                dims.m,
+                dims.n,
+                dims.k,
                 &alpha,
                 static_cast<T const*>(A.constPtr),
-                int(A.ld),
+                dims.lda,
                 static_cast<T const*>(B.constPtr),
-                int(B.ld),
+                dims.ldb,
                 &beta,
                 static_cast<T*>(C.mutPtr),
-                int(C.ld));
+                dims.ldc);
+    }
+
+    /** Narrow a row-major GEMM descriptor triple to the OpenBLAS integer width on the caller thread. */
+    [[nodiscard]] inline HostGemmArgs makeHostGemmArgs(
+        MatrixDescriptor const& A,
+        MatrixDescriptor const& B,
+        MatrixDescriptor const& C)
+    {
+        return HostGemmArgs{
+            .m = checkedVendorInt<alpaka::api::Host>(C.rows, "rows"),
+            .n = checkedVendorInt<alpaka::api::Host>(C.cols, "cols"),
+            .k = checkedVendorInt<alpaka::api::Host>(A.transpose == Transpose::none ? A.cols : A.rows, "gemm k"),
+            .lda = checkedVendorInt<alpaka::api::Host>(A.ld, "ld"),
+            .ldb = checkedVendorInt<alpaka::api::Host>(B.ld, "ld"),
+            .ldc = checkedVendorInt<alpaka::api::Host>(C.ld, "ld")};
     }
 
     template<alpaka::concepts::DeviceKind T_DeviceKind>
@@ -541,7 +582,11 @@ namespace alpaka::blas::internal
         auto const ad = makeMatrixDescriptor(A);
         auto const bd = makeMatrixDescriptor(B);
         auto const cd = makeMatrixDescriptor(C);
-        queue.enqueueNativeFn([=](auto) { hostGemmImpl<T>(ad, bd, cd, static_cast<T>(alpha), static_cast<T>(beta)); });
+        // Narrow all GEMM dims before enqueue so a non-blocking host queue surfaces an out-of-range value to the
+        // caller.
+        auto const dims = makeHostGemmArgs(ad, bd, cd);
+        queue.enqueueNativeFn([=](auto)
+                              { hostGemmImpl<T>(ad, bd, cd, dims, static_cast<T>(alpha), static_cast<T>(beta)); });
     }
 
     template<alpaka::concepts::DeviceKind T_DeviceKind>
@@ -559,6 +604,17 @@ namespace alpaka::blas::internal
         auto const ad = makeBatchedMatrixDescriptor(A);
         auto const bd = makeBatchedMatrixDescriptor(B);
         auto const cd = makeBatchedMatrixDescriptor(C);
+        // The GEMM dimensions/lds are identical for every batch, so narrow them once before enqueue.
+        HostGemmArgs const dims = [&]
+        {
+            MatrixDescriptor const
+                a0{ad.constPtr, ad.mutPtr, ad.rows, ad.cols, ad.ld, ad.transpose, ad.triangle, ad.diagonal};
+            MatrixDescriptor const
+                b0{bd.constPtr, bd.mutPtr, bd.rows, bd.cols, bd.ld, bd.transpose, bd.triangle, bd.diagonal};
+            MatrixDescriptor const
+                c0{cd.constPtr, cd.mutPtr, cd.rows, cd.cols, cd.ld, cd.transpose, cd.triangle, cd.diagonal};
+            return makeHostGemmArgs(a0, b0, c0);
+        }();
         queue.enqueueNativeFn(
             [=](auto)
             {
@@ -588,7 +644,7 @@ namespace alpaka::blas::internal
                     batchC.transpose = cd.transpose;
                     batchC.triangle = cd.triangle;
                     batchC.diagonal = cd.diagonal;
-                    hostGemmImpl<T>(batchA, batchB, batchC, static_cast<T>(alpha), static_cast<T>(beta));
+                    hostGemmImpl<T>(batchA, batchB, batchC, dims, static_cast<T>(alpha), static_cast<T>(beta));
                 }
             });
     }
@@ -608,6 +664,11 @@ namespace alpaka::blas::internal
         auto const ad = makeMatrixDescriptor(A);
         auto const xd = makeVectorDescriptor(x);
         auto const yd = makeVectorDescriptor(y);
+        auto const rowsInt = checkedVendorInt<alpaka::api::Host>(ad.rows, "rows");
+        auto const colsInt = checkedVendorInt<alpaka::api::Host>(ad.cols, "cols");
+        auto const ldInt = checkedVendorInt<alpaka::api::Host>(ad.ld, "ld");
+        auto const incxInt = checkedVendorInt<alpaka::api::Host>(xd.inc, "inc");
+        auto const incyInt = checkedVendorInt<alpaka::api::Host>(yd.inc, "inc");
         queue.enqueueNativeFn(
             [=](auto)
             {
@@ -615,58 +676,58 @@ namespace alpaka::blas::internal
                     cblas_sgemv(
                         CblasRowMajor,
                         toCblasTranspose(ad.transpose),
-                        int(ad.rows),
-                        int(ad.cols),
+                        rowsInt,
+                        colsInt,
                         static_cast<float>(alpha),
                         static_cast<float const*>(ad.constPtr),
-                        int(ad.ld),
+                        ldInt,
                         static_cast<float const*>(xd.constPtr),
-                        int(xd.inc),
+                        incxInt,
                         static_cast<float>(beta),
                         static_cast<float*>(yd.mutPtr),
-                        int(yd.inc));
+                        incyInt);
                 else if constexpr(std::same_as<T, double>)
                     cblas_dgemv(
                         CblasRowMajor,
                         toCblasTranspose(ad.transpose),
-                        int(ad.rows),
-                        int(ad.cols),
+                        rowsInt,
+                        colsInt,
                         static_cast<double>(alpha),
                         static_cast<double const*>(ad.constPtr),
-                        int(ad.ld),
+                        ldInt,
                         static_cast<double const*>(xd.constPtr),
-                        int(xd.inc),
+                        incxInt,
                         static_cast<double>(beta),
                         static_cast<double*>(yd.mutPtr),
-                        int(yd.inc));
+                        incyInt);
                 else if constexpr(std::same_as<T, alpaka::math::Complex<float>>)
                     cblas_cgemv(
                         CblasRowMajor,
                         toCblasTranspose(ad.transpose),
-                        int(ad.rows),
-                        int(ad.cols),
+                        rowsInt,
+                        colsInt,
                         &alpha,
                         static_cast<T const*>(ad.constPtr),
-                        int(ad.ld),
+                        ldInt,
                         static_cast<T const*>(xd.constPtr),
-                        int(xd.inc),
+                        incxInt,
                         &beta,
                         static_cast<T*>(yd.mutPtr),
-                        int(yd.inc));
+                        incyInt);
                 else
                     cblas_zgemv(
                         CblasRowMajor,
                         toCblasTranspose(ad.transpose),
-                        int(ad.rows),
-                        int(ad.cols),
+                        rowsInt,
+                        colsInt,
                         &alpha,
                         static_cast<T const*>(ad.constPtr),
-                        int(ad.ld),
+                        ldInt,
                         static_cast<T const*>(xd.constPtr),
-                        int(xd.inc),
+                        incxInt,
                         &beta,
                         static_cast<T*>(yd.mutPtr),
-                        int(yd.inc));
+                        incyInt);
             });
     }
 
@@ -683,6 +744,10 @@ namespace alpaka::blas::internal
         using T = Value_t<ALPAKA_TYPEOF(A)>;
         auto const ad = makeMatrixDescriptor(A);
         auto const bd = makeMatrixDescriptor(B);
+        auto const rowsInt = checkedVendorInt<alpaka::api::Host>(bd.rows, "rows");
+        auto const colsInt = checkedVendorInt<alpaka::api::Host>(bd.cols, "cols");
+        auto const adLd = checkedVendorInt<alpaka::api::Host>(ad.ld, "ld");
+        auto const bdLd = checkedVendorInt<alpaka::api::Host>(bd.ld, "ld");
         queue.enqueueNativeFn(
             [=](auto)
             {
@@ -693,13 +758,13 @@ namespace alpaka::blas::internal
                         toCblasUplo(ad.triangle),
                         toCblasTranspose(ad.transpose),
                         toCblasDiag(ad.diagonal),
-                        int(bd.rows),
-                        int(bd.cols),
+                        rowsInt,
+                        colsInt,
                         static_cast<float>(alpha),
                         static_cast<float const*>(ad.constPtr),
-                        int(ad.ld),
+                        adLd,
                         static_cast<float*>(bd.mutPtr),
-                        int(bd.ld));
+                        bdLd);
                 else if constexpr(std::same_as<T, double>)
                     cblas_dtrsm(
                         CblasRowMajor,
@@ -707,13 +772,13 @@ namespace alpaka::blas::internal
                         toCblasUplo(ad.triangle),
                         toCblasTranspose(ad.transpose),
                         toCblasDiag(ad.diagonal),
-                        int(bd.rows),
-                        int(bd.cols),
+                        rowsInt,
+                        colsInt,
                         static_cast<double>(alpha),
                         static_cast<double const*>(ad.constPtr),
-                        int(ad.ld),
+                        adLd,
                         static_cast<double*>(bd.mutPtr),
-                        int(bd.ld));
+                        bdLd);
                 else if constexpr(std::same_as<T, alpaka::math::Complex<float>>)
                     cblas_ctrsm(
                         CblasRowMajor,
@@ -721,13 +786,13 @@ namespace alpaka::blas::internal
                         toCblasUplo(ad.triangle),
                         toCblasTranspose(ad.transpose),
                         toCblasDiag(ad.diagonal),
-                        int(bd.rows),
-                        int(bd.cols),
+                        rowsInt,
+                        colsInt,
                         &alpha,
                         static_cast<T const*>(ad.constPtr),
-                        int(ad.ld),
+                        adLd,
                         static_cast<T*>(bd.mutPtr),
-                        int(bd.ld));
+                        bdLd);
                 else
                     cblas_ztrsm(
                         CblasRowMajor,
@@ -735,13 +800,13 @@ namespace alpaka::blas::internal
                         toCblasUplo(ad.triangle),
                         toCblasTranspose(ad.transpose),
                         toCblasDiag(ad.diagonal),
-                        int(bd.rows),
-                        int(bd.cols),
+                        rowsInt,
+                        colsInt,
                         &alpha,
                         static_cast<T const*>(ad.constPtr),
-                        int(ad.ld),
+                        adLd,
                         static_cast<T*>(bd.mutPtr),
-                        int(bd.ld));
+                        bdLd);
             });
     }
 
@@ -765,10 +830,10 @@ namespace alpaka::blas::internal
         // cases before dispatch, so this routine is only called for a well-defined update (n, k > 0).
         auto const n = ad.transpose == Transpose::none ? ad.rows : ad.cols;
         auto const k = ad.transpose == Transpose::none ? ad.cols : ad.rows;
-        auto const nInt = checkedCast<int>(n, "herk n");
-        auto const kInt = checkedCast<int>(k, "herk k");
-        auto const adLd = checkedCast<int>(ad.ld, "herk A ld");
-        auto const cdLd = checkedCast<int>(cd.ld, "herk C ld");
+        auto const nInt = checkedVendorInt<alpaka::api::Host>(n, "herk n");
+        auto const kInt = checkedVendorInt<alpaka::api::Host>(k, "herk k");
+        auto const adLd = checkedVendorInt<alpaka::api::Host>(ad.ld, "herk A ld");
+        auto const cdLd = checkedVendorInt<alpaka::api::Host>(cd.ld, "herk C ld");
         queue.enqueueNativeFn(
             [=](auto)
             {
@@ -823,10 +888,10 @@ namespace alpaka::blas::internal
         auto const cd = makeMatrixDescriptor(C);
         auto const n = ad.transpose == Transpose::none ? ad.rows : ad.cols;
         auto const k = ad.transpose == Transpose::none ? ad.cols : ad.rows;
-        auto const nInt = checkedCast<int>(n, "syrk n");
-        auto const kInt = checkedCast<int>(k, "syrk k");
-        auto const adLd = checkedCast<int>(ad.ld, "syrk A ld");
-        auto const cdLd = checkedCast<int>(cd.ld, "syrk C ld");
+        auto const nInt = checkedVendorInt<alpaka::api::Host>(n, "syrk n");
+        auto const kInt = checkedVendorInt<alpaka::api::Host>(k, "syrk k");
+        auto const adLd = checkedVendorInt<alpaka::api::Host>(ad.ld, "syrk A ld");
+        auto const cdLd = checkedVendorInt<alpaka::api::Host>(cd.ld, "syrk C ld");
         // For real operands conjugateTransposed is the identity-conjugated transpose: normalize to transposed.
         auto const op = ad.transpose == Transpose::none ? CblasNoTrans : CblasTrans;
         queue.enqueueNativeFn(

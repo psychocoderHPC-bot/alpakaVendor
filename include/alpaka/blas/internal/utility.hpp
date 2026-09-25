@@ -7,11 +7,13 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <utility>
 
 #include "alpaka/blas/common.hpp"
 
@@ -116,6 +118,46 @@ namespace alpaka::blas::internal
         return static_cast<T_Int>(value);
     }
 
+    /** Narrow a descriptor integer to the vendor BLAS integer width of a backend.
+     *
+     * Every dispatch that hands a descriptor field (extent, increment, leading dimension, batch count) to a vendor
+     * library funnels through this helper. Host/OpenBLAS, CUDA/cuBLAS and HIP/rocBLAS use 32-bit descriptor
+     * integers, so the value is range-checked with ``checkedCast<int>``; oneAPI/oneMKL descriptor integers are
+     * 64-bit, so the ``std::int64_t`` value is returned unchanged and no rejection is introduced.
+     *
+     * Values are passed as ``std::int64_t`` (the descriptor field type). An unsigned descriptor value larger than
+     * ``INT64_MAX`` that was cast to ``std::int64_t`` underflows to a negative value; ``checkedCast`` rejects it via
+     * its signed-negative branch, and a genuinely unsigned ``checkedCast`` target would reject it via the
+     * ``unsigned long long`` bound comparison. Both paths throw ``std::invalid_argument`` before any vendor call and
+     * before any data access.
+     */
+    template<typename T_Api>
+    [[nodiscard]] inline auto checkedVendorInt(std::int64_t value, char const* what)
+    {
+        if constexpr(std::same_as<T_Api, alpaka::api::OneApi>)
+            return value; // oneMKL descriptor integers are 64-bit: keep the value lossless.
+        else
+            return checkedCast<int>(value, what);
+    }
+
+    /** Convert a byte pitch to an element stride, rejecting a pitch that is not a whole multiple of ``elementSize``.
+     *
+     * A non-multiple pitch cannot be represented as an integer element stride; integer division would silently
+     * truncate it and the backend would read a wrong location. ``what`` names the axis and is used in both the
+     * divisibility and the range error messages.
+     */
+    template<std::integral T_Pitch>
+    [[nodiscard]] inline std::int64_t pitchToElements(T_Pitch pitch, std::size_t elementSize, char const* what)
+    {
+        // Robustness: a zero element size would make the divisibility test below a division by zero. Callers derive
+        // the size from a scalar type and never pass zero, but the helper must not be undefined on a bogus argument.
+        if(elementSize == 0)
+            throw std::invalid_argument(std::string{what} + " requires a nonzero element size.");
+        if(pitch % static_cast<T_Pitch>(elementSize) != static_cast<T_Pitch>(0))
+            throw std::invalid_argument(std::string{what} + " must be a multiple of the element size.");
+        return checkedCast<std::int64_t>(pitch / static_cast<T_Pitch>(elementSize), what);
+    }
+
     struct VectorDescriptor
     {
         void const* constPtr = nullptr;
@@ -150,12 +192,16 @@ namespace alpaka::blas::internal
         auto const& base = getView(view);
         auto const ex = alpaka::onHost::getExtents(base);
         auto const pt = alpaka::onHost::getPitches(base);
-        auto const stride = pt.x() / sizeof(Value_t<View>);
+        auto const stride = pitchToElements(pt.x(), sizeof(Value_t<View>), "Vector pitch (x axis)");
+        // A zero element stride touches the same element for every index and collapses the logical extent. It is not
+        // a dense vector layout, so reject it here rather than letting a vendor call see inc == 0.
+        if(stride == 0)
+            throw std::invalid_argument("Vector pitch (x axis) must not be a zero stride (inc == 0).");
         return VectorDescriptor{
             .constPtr = static_cast<void const*>(alpaka::onHost::data(base)),
             .mutPtr = const_cast<void*>(static_cast<void const*>(alpaka::onHost::data(base))),
             .n = checkedCast<std::int64_t>(ex.x(), "vector extent"),
-            .inc = checkedCast<std::int64_t>(stride, "vector stride")};
+            .inc = stride};
     }
 
     template<typename T_View>
@@ -166,20 +212,21 @@ namespace alpaka::blas::internal
         auto const& base = getView(view);
         auto const ex = alpaka::onHost::getExtents(base);
         auto const pt = alpaka::onHost::getPitches(base);
-        auto const strideCol = pt.x() / sizeof(Value_t<View>);
-        if(strideCol != 1u)
+        auto const strideCol = pitchToElements(pt.x(), sizeof(Value_t<View>), "Column pitch (x axis)");
+        if(strideCol != 1)
             throw std::invalid_argument("Only row-major dense 2D views are supported.");
-        if(pt.y() % sizeof(Value_t<View>) != 0u)
-            throw std::invalid_argument("Row pitch must be a multiple of the element size.");
-        auto const strideRow = pt.y() / sizeof(Value_t<View>);
-        if(strideRow < ex.x())
+        // Compare the converted row pitch against the extent in a single signed 64-bit domain: checkedCast proves the
+        // extent fits std::int64_t (throwing otherwise), so no unsigned operand reaches the relational operator.
+        auto const cols = checkedCast<std::int64_t>(ex.x(), "matrix cols");
+        auto const strideRow = pitchToElements(pt.y(), sizeof(Value_t<View>), "Row pitch (y axis)");
+        if(strideRow < cols)
             throw std::invalid_argument("Invalid row-major leading dimension.");
         return MatrixDescriptor{
             .constPtr = static_cast<void const*>(alpaka::onHost::data(base)),
             .mutPtr = const_cast<void*>(static_cast<void const*>(alpaka::onHost::data(base))),
             .rows = checkedCast<std::int64_t>(ex.y(), "matrix rows"),
-            .cols = checkedCast<std::int64_t>(ex.x(), "matrix cols"),
-            .ld = checkedCast<std::int64_t>(strideRow, "matrix ld"),
+            .cols = cols,
+            .ld = strideRow,
             .transpose = getTranspose(view),
             .triangle = getTriangle(view),
             .diagonal = getDiagonal(view)};
@@ -193,29 +240,141 @@ namespace alpaka::blas::internal
         auto const& base = getView(view);
         auto const ex = alpaka::onHost::getExtents(base);
         auto const pt = alpaka::onHost::getPitches(base);
-        auto const strideCol = pt.x() / sizeof(Value_t<View>);
-        if(strideCol != 1u)
+        auto const strideCol = pitchToElements(pt.x(), sizeof(Value_t<View>), "Column pitch (x axis)");
+        if(strideCol != 1)
             throw std::invalid_argument("Only row-major dense 3D batched views are supported.");
-        if(pt.y() % sizeof(Value_t<View>) != 0u)
-            throw std::invalid_argument("Row pitch must be a multiple of the element size.");
-        if(pt.z() % sizeof(Value_t<View>) != 0u)
-            throw std::invalid_argument("Batch pitch must be a multiple of the element size.");
-        auto const strideRow = pt.y() / sizeof(Value_t<View>);
-        auto const strideBatch = pt.z() / sizeof(Value_t<View>);
-        if(strideRow < ex.x())
+        auto const strideRow = pitchToElements(pt.y(), sizeof(Value_t<View>), "Row pitch (y axis)");
+        auto const strideBatch = pitchToElements(pt.z(), sizeof(Value_t<View>), "Batch pitch (z axis)");
+        // Both the extent and the pitch comparisons live in the signed 64-bit domain: checkedCast rejects an extent
+        // that does not fit std::int64_t, so the relational operators below never mix signed and unsigned operands.
+        auto const rowsForBatch = checkedCast<std::int64_t>(ex.y(), "matrix rows");
+        auto const colsForBatch = checkedCast<std::int64_t>(ex.x(), "matrix cols");
+        if(strideRow < colsForBatch)
             throw std::invalid_argument("Invalid batched matrix leading dimension.");
+        // The last element a batch can access is at (rows - 1) * strideRow + (cols - 1) (row-major, strideRow >=
+        // cols). The minimal exclusive span that keeps the next batch from overlapping is therefore
+        // minSpan = (rows - 1) * strideRow + cols; note this correctly accounts for row padding (strideRow > cols).
+        // A smaller batch stride makes consecutive batches overlap. The product is computed overflow-safely
+        // (saturating at INT64_MAX): a saturated product is larger than any representable batchStride, so the
+        // rejection below still fires.
+        std::int64_t const rowSpan = rowsForBatch - 1;
+        auto const minSpan
+            = (rowSpan != 0 && strideRow > (std::numeric_limits<std::int64_t>::max() - colsForBatch) / rowSpan)
+                  ? std::numeric_limits<std::int64_t>::max()
+                  : rowSpan * strideRow + colsForBatch;
+        if(rowsForBatch > 0 && strideBatch < minSpan)
+            throw std::invalid_argument(
+                "Batch pitch (z axis) must not be smaller than the minimal batch span (rows - 1) * ld + cols "
+                "(batchStride).");
         BatchedMatrixDescriptor desc{};
         desc.constPtr = static_cast<void const*>(alpaka::onHost::data(base));
         desc.mutPtr = const_cast<void*>(static_cast<void const*>(alpaka::onHost::data(base)));
-        desc.rows = checkedCast<std::int64_t>(ex.y(), "matrix rows");
-        desc.cols = checkedCast<std::int64_t>(ex.x(), "matrix cols");
-        desc.ld = checkedCast<std::int64_t>(strideRow, "matrix ld");
+        desc.rows = rowsForBatch;
+        desc.cols = colsForBatch;
+        desc.ld = strideRow;
         desc.transpose = getTranspose(view);
         desc.triangle = getTriangle(view);
         desc.diagonal = getDiagonal(view);
         desc.batchCount = checkedCast<std::int64_t>(ex.z(), "batch count");
-        desc.batchStride = checkedCast<std::int64_t>(strideBatch, "batch stride");
+        desc.batchStride = strideBatch;
         return desc;
+    }
+
+    /** Worst-case element offset accessed by a row-major matrix descriptor.
+     *
+     * The last element of an ``rows x cols`` row-major matrix with leading dimension ``ld`` is at
+     * ``(rows - 1) * ld + (cols - 1)``. Empty operands access no element and yield 0. The multiplication saturates
+     * at ``INT64_MAX`` instead of overflowing, so the byte-span computation below stays well-defined for absurd
+     * metadata.
+     */
+    [[nodiscard]] inline std::int64_t worstCaseElementOffset(MatrixDescriptor const& d)
+    {
+        if(d.rows <= 0 || d.cols <= 0)
+            return 0;
+        std::int64_t const rowSpan = d.rows - 1;
+        std::int64_t const colSpan = d.cols - 1;
+        if(rowSpan != 0 && d.ld > (std::numeric_limits<std::int64_t>::max() - colSpan) / rowSpan)
+            return std::numeric_limits<std::int64_t>::max();
+        return rowSpan * d.ld + colSpan;
+    }
+
+    /** Worst-case element offset accessed by a vector descriptor: ``(n - 1) * |inc|``. */
+    [[nodiscard]] inline std::int64_t worstCaseElementOffset(VectorDescriptor const& d)
+    {
+        if(d.n <= 0)
+            return 0;
+        // Avoid the INT64_MIN negation overflow: |INT64_MIN| is not representable, saturate to INT64_MAX instead.
+        std::int64_t const inc = d.inc == std::numeric_limits<std::int64_t>::min()
+                                     ? std::numeric_limits<std::int64_t>::max()
+                                     : (d.inc < 0 ? -d.inc : d.inc);
+        if(d.n - 1 != 0 && inc > std::numeric_limits<std::int64_t>::max() / (d.n - 1))
+            return std::numeric_limits<std::int64_t>::max();
+        return (d.n - 1) * inc;
+    }
+
+    /** Inclusive byte range touched by an operand with the given element offset and element size. */
+    [[nodiscard]] inline std::pair<std::uintptr_t, std::uintptr_t> byteRange(
+        void const* ptr,
+        std::int64_t elementOffset,
+        std::size_t elementSize)
+    {
+        auto const base = reinterpret_cast<std::uintptr_t>(ptr);
+        constexpr auto uintptrMax = std::numeric_limits<std::uintptr_t>::max();
+        if(elementSize == 0)
+            return {base, base};
+        // Cap the byte span at the distance to the top of the address space so that base + bytes can never wrap.
+        auto const maxBytes = uintptrMax - base;
+        auto const offset = static_cast<std::uintptr_t>(elementOffset);
+        auto const bytes
+            = offset > maxBytes / elementSize ? maxBytes : offset * static_cast<std::uintptr_t>(elementSize);
+        return {base, base + bytes};
+    }
+
+    /** Whether a descriptor accesses no element at all (an empty operand cannot alias anything). */
+    [[nodiscard]] inline bool descriptorEmpty(MatrixDescriptor const& d)
+    {
+        return d.rows <= 0 || d.cols <= 0;
+    }
+
+    [[nodiscard]] inline bool descriptorEmpty(VectorDescriptor const& d)
+    {
+        return d.n <= 0;
+    }
+
+    /** Reject two operands whose byte ranges intersect.
+     *
+     * Both ends are inclusive. An operand with no accessed element (zero extent) or a null base pointer is ignored,
+     * because it cannot alias anything the caller could observe. This backs the documented "must not overlap"
+     * (``herk``) and "must not alias" (``syrk``) contracts; the previous behaviour left aliasing as UB.
+     *
+     * The check compares the conservative *byte span* from each operand's base pointer to its worst-case element
+     * offset, i.e. it treats each operand as one contiguous interval. That is intentionally an over-approximation of
+     * the exact set of touched bytes: two genuinely disjoint interleaved submatrices whose intervals happen to share
+     * padding (for example two column panels of the same buffer separated by a gap, or strided/interleaved views)
+     * are conservatively rejected as "overlapping" even though not a single element would actually be read twice.
+     * The rejection is safe (it never lets a true alias through) at the cost of false positives for such exotic
+     * views; the acceptance semantics are deliberately not relaxed to per-element analysis because the vendor
+     * routines read whole tiles and a padding-only overlap is not observable-safe to allow.
+     */
+    template<typename T_DescA, typename T_DescB>
+    inline void validateNoOverlap(
+        T_DescA const& a,
+        std::size_t aElementSize,
+        T_DescB const& b,
+        std::size_t bElementSize,
+        char const* what)
+    {
+        if(a.constPtr == nullptr || b.constPtr == nullptr)
+            return;
+        // An operand with a zero extent touches no element, so it cannot overlap anything.
+        if(descriptorEmpty(a) || descriptorEmpty(b))
+            return;
+        auto const aOffset = worstCaseElementOffset(a);
+        auto const bOffset = worstCaseElementOffset(b);
+        auto const [aFirst, aLast] = byteRange(a.constPtr, aOffset, aElementSize);
+        auto const [bFirst, bLast] = byteRange(b.constPtr, bOffset, bElementSize);
+        if(aFirst <= bLast && bFirst <= aLast)
+            throw std::invalid_argument(std::string{what} + " operands must not overlap.");
     }
 
     template<typename T_Matrix>
@@ -318,6 +477,9 @@ namespace alpaka::blas::internal
         static_assert(std::same_as<AValue, CValue>, "herk requires A and C to have the same element type.");
         auto const ad = makeMatrixDescriptor(A);
         auto const cd = makeMatrixDescriptor(C);
+        // Documented contract: A and C must not overlap. Reject before any descriptor is dispatched (and before any
+        // data access); an alias would make the in-place update silently read partially-updated operands.
+        validateNoOverlap(ad, sizeof(AValue), cd, sizeof(CValue), "herk");
         // A is a general dense matrix: reject triangle/unit-diagonal annotations.
         if(ad.triangle != Triangle::full)
             throw std::invalid_argument("herk requires a general dense A without a triangle annotation.");
@@ -349,8 +511,12 @@ namespace alpaka::blas::internal
         static_assert(
             !std::is_const_v<alpaka::GetValueType_t<detail::unannotated_t<T_C>>>,
             "syrk requires a writable C view (element type must not be const).");
+        using AValue = std::remove_cv_t<Value_t<T_A>>;
+        using CValue = std::remove_cv_t<Value_t<T_C>>;
         auto const ad = makeMatrixDescriptor(A);
         auto const cd = makeMatrixDescriptor(C);
+        // Documented contract: A and C must not alias (no overlapping storage). Reject before dispatch.
+        validateNoOverlap(ad, sizeof(AValue), cd, sizeof(CValue), "syrk");
         // A is a general dense matrix: reject triangle/unit-diagonal annotations.
         if(ad.triangle != Triangle::full)
             throw std::invalid_argument("syrk requires a general dense A without a triangle annotation.");

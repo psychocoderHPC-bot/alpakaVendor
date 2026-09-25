@@ -4,6 +4,8 @@
  */
 
 #include <alpakaTest/deviceHelper.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
+#include <limits>
 
 #include "alpaka/blas.hpp"
 #include "test.hpp"
@@ -142,5 +144,192 @@ TEMPLATE_LIST_TEST_CASE(
         static_assert(dotCallable<TQueue, TViewX, TViewYDouble, TViewResultDoubleConst>);
         static_assert(dotCallable<TQueue, TViewX, TViewY, TViewResultDouble>);
         static_assert(dotCallable<TQueue, TViewX, TViewY, TViewResultConst>);
+    }
+}
+
+TEMPLATE_LIST_TEST_CASE(
+    "blas centralized validation rejects non-element pitches, aliasing and oversized extents",
+    "[unit][blas][invalid]",
+    TestBackends)
+{
+    auto device = getDeviceOrSkipTest(TestType::makeDict());
+    if constexpr(!isBlasBackendEnabledForDevice(device))
+    {
+        SUCCEED();
+    }
+    else
+    {
+        auto queue = device.makeQueue();
+        using Api = std::remove_cvref_t<ALPAKA_TYPEOF(device.getApi())>;
+
+        // Misaligned pitch: the descriptor layer must reject a byte pitch that is not a whole multiple of the
+        // element size instead of silently truncating the element stride. The innermost (x/column and vector) axes
+        // are exercised with configurable-pitch stub views in helpers.cpp because alpaka3 normalizes the innermost
+        // MdSpan pitch to sizeof(value_type); the outer row/batch axes are real MdSpan pitches here.
+        auto misalignedStorage = alpaka::onHost::allocUnified<float>(device, 64u);
+        auto rowPitch = alpaka::makeMdSpan(
+            misalignedStorage.data(),
+            alpaka::Vec<std::uint32_t, 2u>{3u, 4u},
+            alpaka::Vec<std::size_t, 2u>{6u * sizeof(float) + 2u, sizeof(float)});
+        CHECK_THROWS_AS(alpaka::blas::internal::makeMatrixDescriptor(rowPitch), std::invalid_argument);
+        auto batchPitch = alpaka::makeMdSpan(
+            misalignedStorage.data(),
+            alpaka::Vec<std::uint32_t, 3u>{2u, 3u, 4u},
+            alpaka::Vec<std::size_t, 3u>{36u * sizeof(float) + 2u, 6u * sizeof(float), sizeof(float)});
+        CHECK_THROWS_AS(alpaka::blas::internal::makeBatchedMatrixDescriptor(batchPitch), std::invalid_argument);
+
+        // Alias/overlap rejection for the documented herk/syrk contracts: A and C backed by the same storage must be
+        // rejected by the metadata validation before any dispatch. The views are tiny and are never read.
+        {
+            auto storage = alpaka::onHost::allocUnified<float>(device, 64u);
+            auto A = alpaka::makeMdSpan(
+                storage.data(),
+                alpaka::Vec<std::uint32_t, 2u>{3u, 3u},
+                alpaka::Vec<std::size_t, 2u>{3u * sizeof(float), sizeof(float)});
+            auto Coverlap = alpaka::makeMdSpan(
+                storage.data(),
+                alpaka::Vec<std::uint32_t, 2u>{3u, 3u},
+                alpaka::Vec<std::size_t, 2u>{3u * sizeof(float), sizeof(float)});
+            auto upperCoverlap = alpaka::blas::upper(Coverlap);
+            CHECK_THROWS_AS(alpaka::blas::onHost::syrk(queue, 1.0f, A, 1.0f, upperCoverlap), std::invalid_argument);
+        }
+        {
+            using Scalar = alpaka::math::Complex<float>;
+            auto storage = alpaka::onHost::allocUnified<Scalar>(device, 64u);
+            auto A = alpaka::makeMdSpan(
+                storage.data(),
+                alpaka::Vec<std::uint32_t, 2u>{3u, 3u},
+                alpaka::Vec<std::size_t, 2u>{3u * sizeof(Scalar), sizeof(Scalar)});
+            auto Coverlap = alpaka::makeMdSpan(
+                storage.data(),
+                alpaka::Vec<std::uint32_t, 2u>{3u, 3u},
+                alpaka::Vec<std::size_t, 2u>{3u * sizeof(Scalar), sizeof(Scalar)});
+            auto upperCoverlap = alpaka::blas::upper(Coverlap);
+            CHECK_THROWS_AS(alpaka::blas::onHost::herk(queue, 1.0f, A, 1.0f, upperCoverlap), std::invalid_argument);
+        }
+
+        // Partial overlap with a *distinct* base pointer: the same 3x3 shape one element later genuinely intersects
+        // A's byte span and must be rejected. The adjacent view starting exactly one element past A's exclusive end
+        // is disjoint and must be accepted (positive control). Both views are tiny and never read.
+        {
+            auto storage = alpaka::onHost::allocUnified<float>(device, 64u);
+            auto makeView = [&](float* base)
+            {
+                return alpaka::makeMdSpan(
+                    base,
+                    alpaka::Vec<std::uint32_t, 2u>{3u, 3u},
+                    alpaka::Vec<std::size_t, 2u>{3u * sizeof(float), sizeof(float)});
+            };
+            auto A = makeView(storage.data());
+            auto Cpartial = alpaka::blas::upper(makeView(storage.data() + 1u));
+            CHECK_THROWS_WITH(
+                alpaka::blas::onHost::syrk(queue, 1.0f, A, 1.0f, Cpartial),
+                Catch::Matchers::ContainsSubstring("must not overlap"));
+            // A spans elements 0..8 (3x3 ld=3); starting at element 9 is adjacent, not overlapping.
+            auto Cadjacent = alpaka::blas::upper(makeView(storage.data() + 9u));
+            CHECK_NOTHROW(alpaka::blas::onHost::syrk(queue, 1.0f, A, 1.0f, Cadjacent));
+            // Drain the accepted positive-control work before storage goes out of scope.
+            alpaka::onHost::wait(queue);
+        }
+
+        // Zero-extent no-op contracts: an empty vector copy/scal and an empty rank-k update perform no data access
+        // and must not throw. A one-element backing buffer is used so any out-of-range access would be obvious.
+        {
+            auto storage = alpaka::onHost::allocUnified<float>(device, 1u);
+            auto emptyX = alpaka::makeMdSpan(
+                storage.data(),
+                alpaka::Vec<std::uint32_t, 1u>{0u},
+                alpaka::Vec<std::size_t, 1u>{sizeof(float)});
+            auto emptyY = alpaka::makeMdSpan(
+                storage.data(),
+                alpaka::Vec<std::uint32_t, 1u>{0u},
+                alpaka::Vec<std::size_t, 1u>{sizeof(float)});
+            CHECK_NOTHROW(alpaka::blas::onHost::copy(queue, emptyX, emptyY));
+            CHECK_NOTHROW(alpaka::blas::onHost::scal(queue, 2.0f, emptyY));
+
+            auto emptyA = alpaka::makeMdSpan(
+                storage.data(),
+                alpaka::Vec<std::uint32_t, 2u>{0u, 3u},
+                alpaka::Vec<std::size_t, 2u>{4u * sizeof(float), sizeof(float)});
+            auto emptyC = alpaka::makeMdSpan(
+                storage.data(),
+                alpaka::Vec<std::uint32_t, 2u>{0u, 0u},
+                alpaka::Vec<std::size_t, 2u>{sizeof(float), sizeof(float)});
+            auto upperEmptyC = alpaka::blas::upper(emptyC);
+            CHECK_NOTHROW(alpaka::blas::onHost::syrk(queue, 1.0f, emptyA, 1.0f, upperEmptyC));
+            alpaka::onHost::wait(queue);
+        }
+
+        // Oversized extents: the metadata alone (a single-element backing store) must reject before enqueue on the
+        // 32-bit vendor-int backends, while oneMKL keeps the 64-bit extent. This mirrors the integration guard for
+        // the descriptor layer; no backend routine is executed for the rejected case.
+        {
+            using Scalar = float;
+            constexpr std::size_t hugeN = static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max()) + 2u;
+            auto storage = alpaka::onHost::allocUnified<Scalar>(device, 1u);
+            // Explicit element-sized pitch keeps the descriptor well-formed (a default pitch computed from the huge
+            // extent could overflow); only the extent exceeds the 32-bit vendor int.
+            auto big = alpaka::makeMdSpan(
+                storage.data(),
+                alpaka::Vec<std::size_t, 1u>{hugeN},
+                alpaka::Vec<std::size_t, 1u>{sizeof(Scalar)});
+            auto desc = alpaka::blas::internal::makeVectorDescriptor(big);
+            if constexpr(std::same_as<Api, alpaka::api::OneApi>)
+            {
+                // oneMKL descriptor integers are 64-bit: the extent is representable and preserved losslessly.
+                CHECK(desc.n == static_cast<std::int64_t>(hugeN));
+                CHECK(alpaka::blas::internal::checkedVendorInt<alpaka::api::OneApi>(desc.n, "n") == desc.n);
+            }
+            else
+            {
+                CHECK_THROWS_AS(alpaka::blas::internal::checkedVendorInt<Api>(desc.n, "n"), std::invalid_argument);
+            }
+        }
+        SUCCEED();
+    }
+}
+
+TEMPLATE_LIST_TEST_CASE(
+    "blas host non-blocking queue surfaces oversized-extent rejection synchronously",
+    "[unit][blas][invalid]",
+    TestBackends)
+{
+    auto device = getDeviceOrSkipTest(TestType::makeDict());
+    using Api = std::remove_cvref_t<ALPAKA_TYPEOF(device.getApi())>;
+    if constexpr(!isBlasBackendEnabledForDevice(device))
+    {
+        SUCCEED();
+    }
+    else if constexpr(!std::same_as<Api, alpaka::api::Host>)
+    {
+        // The narrowed-int rejection path under test is host-specific; cuda/hip/oneapi have their own dispatch.
+        SUCCEED();
+    }
+    else
+    {
+        // A host *non-blocking* queue defers the enqueued lambda onto the callback thread. A descriptor narrowing
+        // performed inside that lambda would be captured in a future that enqueueNativeFn discards, so the caller
+        // would never observe the error. The narrowing must therefore run on the caller thread before enqueue, and
+        // this CHECK_THROWS_AS must fire on the calling thread. The views are lightweight: a one-element backing
+        // store with a huge logical extent (no allocation proportional to the extent).
+        auto queue = device.makeQueue(alpaka::queueKind::nonBlocking);
+        constexpr std::size_t hugeN = static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max()) + 2u;
+        auto storageX = alpaka::onHost::allocUnified<float>(device, 1u);
+        auto storageY = alpaka::onHost::allocUnified<float>(device, 1u);
+        auto bigX = alpaka::makeMdSpan(
+            storageX.data(),
+            alpaka::Vec<std::size_t, 1u>{hugeN},
+            alpaka::Vec<std::size_t, 1u>{sizeof(float)});
+        auto bigY = alpaka::makeMdSpan(
+            storageY.data(),
+            alpaka::Vec<std::size_t, 1u>{hugeN},
+            alpaka::Vec<std::size_t, 1u>{sizeof(float)});
+        CHECK_THROWS_AS(alpaka::blas::onHost::copy(queue, bigX, bigY), std::invalid_argument);
+        // Positive control: a small pair on the same non-blocking queue is accepted and completes after wait.
+        auto smallX = alpaka::onHost::allocUnified<float>(device, 4u);
+        auto smallY = alpaka::onHost::allocUnified<float>(device, 4u);
+        CHECK_NOTHROW(alpaka::blas::onHost::copy(queue, smallX, smallY));
+        alpaka::onHost::wait(queue);
+        SUCCEED();
     }
 }

@@ -19,6 +19,26 @@ namespace alpaka::blas::onHost
      * must additionally be accessible to the backend that writes it: device-accessible for CUDA/HIP, and also
      *       host-accessible (shared or host USM) for oneAPI ``iamax``, where oneMKL writes the index on the device and
      * a host task then dereferences it.
+     *
+     * @section blas_validation Argument validation and integer narrowing
+     *
+     * Every wrapper validates operand metadata up front and throws ``std::invalid_argument`` before anything is
+     * enqueued and before any data is accessed. This covers layout (row-major dense with column stride 1), shape
+     * agreement, annotations, zero-extent no-ops, and the alias/overlap contracts below.
+     *
+     * Views must be row-major dense and their byte pitches must be whole multiples of the element size on every axis:
+     * for a vector view the x pitch, and for a matrix/batched view the x (column), y (row) and z (batch) pitches. A
+     * non-multiple pitch is rejected instead of being silently truncated to a wrong element stride. The row stride
+     * (leading dimension) must additionally be at least the number of columns.
+     *
+     * Descriptor integers (extents, increments, leading dimensions, batch counts) are not silently narrowed. On the
+     * 32-bit vendor-int backends (Host/OpenBLAS, CUDA/cuBLAS, HIP/rocBLAS) an oversized value throws
+     * ``std::invalid_argument``; on oneAPI/oneMKL the 64-bit descriptor integers are kept losslessly, so an extent
+     * that is merely larger than ``INT_MAX`` remains representable there.
+     *
+     * ``herk`` requires that ``A`` and ``C`` must not overlap, and ``syrk`` requires that ``A`` and ``C`` must not
+     * alias (no overlapping storage). This is enforced by the validation layer; passing operands that share storage
+     * throws ``std::invalid_argument`` rather than producing an unspecified in-place result.
      */
 
     /**

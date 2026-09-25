@@ -52,6 +52,8 @@ namespace alpaka::blas::internal
     {
         if(status != CUBLAS_STATUS_SUCCESS)
             throw std::invalid_argument(
+                // int(status) only formats the vendor error enum; it is not a descriptor cast (descriptor narrowing
+                // goes through checkedVendorInt above).
                 std::string{what} + " failed with cuBLAS error code " + std::to_string(int(status)));
     }
 
@@ -172,41 +174,41 @@ namespace alpaka::blas::internal
                     check(
                         cublasScopy(
                             handle,
-                            int(xd.n),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
                             static_cast<float const*>(xd.constPtr),
-                            int(xd.inc),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"),
                             static_cast<float*>(yd.mutPtr),
-                            int(yd.inc)),
+                            checkedVendorInt<alpaka::api::Cuda>(yd.inc, "inc")),
                         "cublasScopy");
                 else if constexpr(std::same_as<T, double>)
                     check(
                         cublasDcopy(
                             handle,
-                            int(xd.n),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
                             static_cast<double const*>(xd.constPtr),
-                            int(xd.inc),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"),
                             static_cast<double*>(yd.mutPtr),
-                            int(yd.inc)),
+                            checkedVendorInt<alpaka::api::Cuda>(yd.inc, "inc")),
                         "cublasDcopy");
                 else if constexpr(std::same_as<T, alpaka::math::Complex<float>>)
                     check(
                         cublasCcopy(
                             handle,
-                            int(xd.n),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
                             reinterpret_cast<cuComplex const*>(xd.constPtr),
-                            int(xd.inc),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"),
                             reinterpret_cast<cuComplex*>(yd.mutPtr),
-                            int(yd.inc)),
+                            checkedVendorInt<alpaka::api::Cuda>(yd.inc, "inc")),
                         "cublasCcopy");
                 else
                     check(
                         cublasZcopy(
                             handle,
-                            int(xd.n),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
                             reinterpret_cast<cuDoubleComplex const*>(xd.constPtr),
-                            int(xd.inc),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"),
                             reinterpret_cast<cuDoubleComplex*>(yd.mutPtr),
-                            int(yd.inc)),
+                            checkedVendorInt<alpaka::api::Cuda>(yd.inc, "inc")),
                         "cublasZcopy");
             });
     }
@@ -231,41 +233,41 @@ namespace alpaka::blas::internal
                     check(
                         cublasSswap(
                             handle,
-                            int(xd.n),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
                             static_cast<float*>(xd.mutPtr),
-                            int(xd.inc),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"),
                             static_cast<float*>(yd.mutPtr),
-                            int(yd.inc)),
+                            checkedVendorInt<alpaka::api::Cuda>(yd.inc, "inc")),
                         "cublasSswap");
                 else if constexpr(std::same_as<T, double>)
                     check(
                         cublasDswap(
                             handle,
-                            int(xd.n),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
                             static_cast<double*>(xd.mutPtr),
-                            int(xd.inc),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"),
                             static_cast<double*>(yd.mutPtr),
-                            int(yd.inc)),
+                            checkedVendorInt<alpaka::api::Cuda>(yd.inc, "inc")),
                         "cublasDswap");
                 else if constexpr(std::same_as<T, alpaka::math::Complex<float>>)
                     check(
                         cublasCswap(
                             handle,
-                            int(xd.n),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
                             reinterpret_cast<cuComplex*>(xd.mutPtr),
-                            int(xd.inc),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"),
                             reinterpret_cast<cuComplex*>(yd.mutPtr),
-                            int(yd.inc)),
+                            checkedVendorInt<alpaka::api::Cuda>(yd.inc, "inc")),
                         "cublasCswap");
                 else
                     check(
                         cublasZswap(
                             handle,
-                            int(xd.n),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
                             reinterpret_cast<cuDoubleComplex*>(xd.mutPtr),
-                            int(xd.inc),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"),
                             reinterpret_cast<cuDoubleComplex*>(yd.mutPtr),
-                            int(yd.inc)),
+                            checkedVendorInt<alpaka::api::Cuda>(yd.inc, "inc")),
                         "cublasZswap");
             });
     }
@@ -288,29 +290,39 @@ namespace alpaka::blas::internal
                 T alphaT = static_cast<T>(alpha);
                 if constexpr(std::same_as<T, float>)
                     check(
-                        cublasSscal(handle, int(xd.n), &alphaT, static_cast<float*>(xd.mutPtr), int(xd.inc)),
+                        cublasSscal(
+                            handle,
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
+                            &alphaT,
+                            static_cast<float*>(xd.mutPtr),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc")),
                         "cublasSscal");
                 else if constexpr(std::same_as<T, double>)
                     check(
-                        cublasDscal(handle, int(xd.n), &alphaT, static_cast<double*>(xd.mutPtr), int(xd.inc)),
+                        cublasDscal(
+                            handle,
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
+                            &alphaT,
+                            static_cast<double*>(xd.mutPtr),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc")),
                         "cublasDscal");
                 else if constexpr(std::same_as<T, alpaka::math::Complex<float>>)
                     check(
                         cublasCscal(
                             handle,
-                            int(xd.n),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
                             reinterpret_cast<cuComplex*>(&alphaT),
                             reinterpret_cast<cuComplex*>(xd.mutPtr),
-                            int(xd.inc)),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc")),
                         "cublasCscal");
                 else
                     check(
                         cublasZscal(
                             handle,
-                            int(xd.n),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
                             reinterpret_cast<cuDoubleComplex*>(&alphaT),
                             reinterpret_cast<cuDoubleComplex*>(xd.mutPtr),
-                            int(xd.inc)),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc")),
                         "cublasZscal");
             });
     }
@@ -337,45 +349,45 @@ namespace alpaka::blas::internal
                     check(
                         cublasSaxpy(
                             handle,
-                            int(xd.n),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
                             &alphaT,
                             static_cast<float const*>(xd.constPtr),
-                            int(xd.inc),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"),
                             static_cast<float*>(yd.mutPtr),
-                            int(yd.inc)),
+                            checkedVendorInt<alpaka::api::Cuda>(yd.inc, "inc")),
                         "cublasSaxpy");
                 else if constexpr(std::same_as<T, double>)
                     check(
                         cublasDaxpy(
                             handle,
-                            int(xd.n),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
                             &alphaT,
                             static_cast<double const*>(xd.constPtr),
-                            int(xd.inc),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"),
                             static_cast<double*>(yd.mutPtr),
-                            int(yd.inc)),
+                            checkedVendorInt<alpaka::api::Cuda>(yd.inc, "inc")),
                         "cublasDaxpy");
                 else if constexpr(std::same_as<T, alpaka::math::Complex<float>>)
                     check(
                         cublasCaxpy(
                             handle,
-                            int(xd.n),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
                             reinterpret_cast<cuComplex*>(&alphaT),
                             reinterpret_cast<cuComplex const*>(xd.constPtr),
-                            int(xd.inc),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"),
                             reinterpret_cast<cuComplex*>(yd.mutPtr),
-                            int(yd.inc)),
+                            checkedVendorInt<alpaka::api::Cuda>(yd.inc, "inc")),
                         "cublasCaxpy");
                 else
                     check(
                         cublasZaxpy(
                             handle,
-                            int(xd.n),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
                             reinterpret_cast<cuDoubleComplex*>(&alphaT),
                             reinterpret_cast<cuDoubleComplex const*>(xd.constPtr),
-                            int(xd.inc),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"),
                             reinterpret_cast<cuDoubleComplex*>(yd.mutPtr),
-                            int(yd.inc)),
+                            checkedVendorInt<alpaka::api::Cuda>(yd.inc, "inc")),
                         "cublasZaxpy");
             });
     }
@@ -403,44 +415,44 @@ namespace alpaka::blas::internal
                     check(
                         cublasSdot(
                             handle,
-                            int(xd.n),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
                             static_cast<float const*>(xd.constPtr),
-                            int(xd.inc),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"),
                             static_cast<float const*>(yd.constPtr),
-                            int(yd.inc),
+                            checkedVendorInt<alpaka::api::Cuda>(yd.inc, "inc"),
                             resultPtr),
                         "cublasSdot");
                 else if constexpr(std::same_as<T, double>)
                     check(
                         cublasDdot(
                             handle,
-                            int(xd.n),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
                             static_cast<double const*>(xd.constPtr),
-                            int(xd.inc),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"),
                             static_cast<double const*>(yd.constPtr),
-                            int(yd.inc),
+                            checkedVendorInt<alpaka::api::Cuda>(yd.inc, "inc"),
                             resultPtr),
                         "cublasDdot");
                 else if constexpr(std::same_as<T, alpaka::math::Complex<float>>)
                     check(
                         cublasCdotu(
                             handle,
-                            int(xd.n),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
                             reinterpret_cast<cuComplex const*>(xd.constPtr),
-                            int(xd.inc),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"),
                             reinterpret_cast<cuComplex const*>(yd.constPtr),
-                            int(yd.inc),
+                            checkedVendorInt<alpaka::api::Cuda>(yd.inc, "inc"),
                             reinterpret_cast<cuComplex*>(resultPtr)),
                         "cublasCdotu");
                 else
                     check(
                         cublasZdotu(
                             handle,
-                            int(xd.n),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
                             reinterpret_cast<cuDoubleComplex const*>(xd.constPtr),
-                            int(xd.inc),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"),
                             reinterpret_cast<cuDoubleComplex const*>(yd.constPtr),
-                            int(yd.inc),
+                            checkedVendorInt<alpaka::api::Cuda>(yd.inc, "inc"),
                             reinterpret_cast<cuDoubleComplex*>(resultPtr)),
                         "cublasZdotu");
             });
@@ -534,33 +546,38 @@ namespace alpaka::blas::internal
                 check(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_DEVICE), "cublasSetPointerMode");
                 if constexpr(std::same_as<T, float>)
                     check(
-                        cublasSnrm2(handle, int(xd.n), static_cast<float const*>(xd.constPtr), int(xd.inc), resultPtr),
+                        cublasSnrm2(
+                            handle,
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
+                            static_cast<float const*>(xd.constPtr),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"),
+                            resultPtr),
                         "cublasSnrm2");
                 else if constexpr(std::same_as<T, double>)
                     check(
                         cublasDnrm2(
                             handle,
-                            int(xd.n),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
                             static_cast<double const*>(xd.constPtr),
-                            int(xd.inc),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"),
                             resultPtr),
                         "cublasDnrm2");
                 else if constexpr(std::same_as<T, alpaka::math::Complex<float>>)
                     check(
                         cublasScnrm2(
                             handle,
-                            int(xd.n),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
                             reinterpret_cast<cuComplex const*>(xd.constPtr),
-                            int(xd.inc),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"),
                             resultPtr),
                         "cublasScnrm2");
                 else
                     check(
                         cublasDznrm2(
                             handle,
-                            int(xd.n),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
                             reinterpret_cast<cuDoubleComplex const*>(xd.constPtr),
-                            int(xd.inc),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"),
                             resultPtr),
                         "cublasDznrm2");
             });
@@ -585,33 +602,38 @@ namespace alpaka::blas::internal
                 check(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_DEVICE), "cublasSetPointerMode");
                 if constexpr(std::same_as<T, float>)
                     check(
-                        cublasSasum(handle, int(xd.n), static_cast<float const*>(xd.constPtr), int(xd.inc), resultPtr),
+                        cublasSasum(
+                            handle,
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
+                            static_cast<float const*>(xd.constPtr),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"),
+                            resultPtr),
                         "cublasSasum");
                 else if constexpr(std::same_as<T, double>)
                     check(
                         cublasDasum(
                             handle,
-                            int(xd.n),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
                             static_cast<double const*>(xd.constPtr),
-                            int(xd.inc),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"),
                             resultPtr),
                         "cublasDasum");
                 else if constexpr(std::same_as<T, alpaka::math::Complex<float>>)
                     check(
                         cublasScasum(
                             handle,
-                            int(xd.n),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
                             reinterpret_cast<cuComplex const*>(xd.constPtr),
-                            int(xd.inc),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"),
                             resultPtr),
                         "cublasScasum");
                 else
                     check(
                         cublasDzasum(
                             handle,
-                            int(xd.n),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
                             reinterpret_cast<cuDoubleComplex const*>(xd.constPtr),
-                            int(xd.inc),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"),
                             resultPtr),
                         "cublasDzasum");
             });
@@ -638,36 +660,36 @@ namespace alpaka::blas::internal
                     check(
                         cublasIsamax(
                             handle,
-                            int(xd.n),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
                             static_cast<float const*>(xd.constPtr),
-                            int(xd.inc),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"),
                             reinterpret_cast<int*>(resultPtr)),
                         "cublasIsamax");
                 else if constexpr(std::same_as<T, double>)
                     check(
                         cublasIdamax(
                             handle,
-                            int(xd.n),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
                             static_cast<double const*>(xd.constPtr),
-                            int(xd.inc),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"),
                             reinterpret_cast<int*>(resultPtr)),
                         "cublasIdamax");
                 else if constexpr(std::same_as<T, alpaka::math::Complex<float>>)
                     check(
                         cublasIcamax(
                             handle,
-                            int(xd.n),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
                             reinterpret_cast<cuComplex const*>(xd.constPtr),
-                            int(xd.inc),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"),
                             reinterpret_cast<int*>(resultPtr)),
                         "cublasIcamax");
                 else
                     check(
                         cublasIzamax(
                             handle,
-                            int(xd.n),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
                             reinterpret_cast<cuDoubleComplex const*>(xd.constPtr),
-                            int(xd.inc),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"),
                             reinterpret_cast<int*>(resultPtr)),
                         "cublasIzamax");
             });
@@ -677,7 +699,7 @@ namespace alpaka::blas::internal
             alpaka::onHost::ThreadSpec{1u, 1u},
             IamaxZeroForEmptyKernel{},
             reinterpret_cast<int*>(resultPtr),
-            static_cast<int>(xd.n));
+            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"));
     }
 
     void alpakaFnDispatch(
@@ -708,20 +730,22 @@ namespace alpaka::blas::internal
                         handle,
                         toCublasOp(bd.transpose),
                         toCublasOp(ad.transpose),
-                        int(cd.cols),
-                        int(cd.rows),
-                        int(ad.transpose == Transpose::none ? ad.cols : ad.rows),
+                        checkedVendorInt<alpaka::api::Cuda>(cd.cols, "cols"),
+                        checkedVendorInt<alpaka::api::Cuda>(cd.rows, "rows"),
+                        checkedVendorInt<alpaka::api::Cuda>(
+                            ad.transpose == Transpose::none ? ad.cols : ad.rows,
+                            "gemm k"),
                         &alphaT,
                         bd.constPtr,
                         CublasTraits<T>::dataType,
-                        int(bd.ld),
+                        checkedVendorInt<alpaka::api::Cuda>(bd.ld, "ld"),
                         ad.constPtr,
                         CublasTraits<T>::dataType,
-                        int(ad.ld),
+                        checkedVendorInt<alpaka::api::Cuda>(ad.ld, "ld"),
                         &betaT,
                         cd.mutPtr,
                         CublasTraits<T>::dataType,
-                        int(cd.ld),
+                        checkedVendorInt<alpaka::api::Cuda>(cd.ld, "ld"),
                         computeTypeFor<T>(options),
                         CUBLAS_GEMM_DEFAULT),
                     "cublasGemmEx");
@@ -756,24 +780,26 @@ namespace alpaka::blas::internal
                         handle,
                         toCublasOp(bd.transpose),
                         toCublasOp(ad.transpose),
-                        int(cd.cols),
-                        int(cd.rows),
-                        int(ad.transpose == Transpose::none ? ad.cols : ad.rows),
+                        checkedVendorInt<alpaka::api::Cuda>(cd.cols, "cols"),
+                        checkedVendorInt<alpaka::api::Cuda>(cd.rows, "rows"),
+                        checkedVendorInt<alpaka::api::Cuda>(
+                            ad.transpose == Transpose::none ? ad.cols : ad.rows,
+                            "gemm k"),
                         &alphaT,
                         bd.constPtr,
                         CublasTraits<T>::dataType,
-                        int(bd.ld),
+                        checkedVendorInt<alpaka::api::Cuda>(bd.ld, "ld"),
                         static_cast<long long>(bd.batchStride),
                         ad.constPtr,
                         CublasTraits<T>::dataType,
-                        int(ad.ld),
+                        checkedVendorInt<alpaka::api::Cuda>(ad.ld, "ld"),
                         static_cast<long long>(ad.batchStride),
                         &betaT,
                         cd.mutPtr,
                         CublasTraits<T>::dataType,
-                        int(cd.ld),
+                        checkedVendorInt<alpaka::api::Cuda>(cd.ld, "ld"),
                         static_cast<long long>(cd.batchStride),
-                        int(cd.batchCount),
+                        checkedVendorInt<alpaka::api::Cuda>(cd.batchCount, "batchCount"),
                         computeTypeFor<T>(options),
                         CUBLAS_GEMM_DEFAULT),
                     "cublasGemmStridedBatchedEx");
@@ -809,64 +835,64 @@ namespace alpaka::blas::internal
                         cublasSgemv(
                             handle,
                             op,
-                            int(ad.cols),
-                            int(ad.rows),
+                            checkedVendorInt<alpaka::api::Cuda>(ad.cols, "cols"),
+                            checkedVendorInt<alpaka::api::Cuda>(ad.rows, "rows"),
                             &alphaT,
                             static_cast<float const*>(ad.constPtr),
-                            int(ad.ld),
+                            checkedVendorInt<alpaka::api::Cuda>(ad.ld, "ld"),
                             static_cast<float const*>(xd.constPtr),
-                            int(xd.inc),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"),
                             &betaT,
                             static_cast<float*>(yd.mutPtr),
-                            int(yd.inc)),
+                            checkedVendorInt<alpaka::api::Cuda>(yd.inc, "inc")),
                         "cublasSgemv");
                 else if constexpr(std::same_as<T, double>)
                     check(
                         cublasDgemv(
                             handle,
                             op,
-                            int(ad.cols),
-                            int(ad.rows),
+                            checkedVendorInt<alpaka::api::Cuda>(ad.cols, "cols"),
+                            checkedVendorInt<alpaka::api::Cuda>(ad.rows, "rows"),
                             &alphaT,
                             static_cast<double const*>(ad.constPtr),
-                            int(ad.ld),
+                            checkedVendorInt<alpaka::api::Cuda>(ad.ld, "ld"),
                             static_cast<double const*>(xd.constPtr),
-                            int(xd.inc),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"),
                             &betaT,
                             static_cast<double*>(yd.mutPtr),
-                            int(yd.inc)),
+                            checkedVendorInt<alpaka::api::Cuda>(yd.inc, "inc")),
                         "cublasDgemv");
                 else if constexpr(std::same_as<T, alpaka::math::Complex<float>>)
                     check(
                         cublasCgemv(
                             handle,
                             op,
-                            int(ad.cols),
-                            int(ad.rows),
+                            checkedVendorInt<alpaka::api::Cuda>(ad.cols, "cols"),
+                            checkedVendorInt<alpaka::api::Cuda>(ad.rows, "rows"),
                             reinterpret_cast<cuComplex*>(&alphaT),
                             reinterpret_cast<cuComplex const*>(ad.constPtr),
-                            int(ad.ld),
+                            checkedVendorInt<alpaka::api::Cuda>(ad.ld, "ld"),
                             reinterpret_cast<cuComplex const*>(xd.constPtr),
-                            int(xd.inc),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"),
                             reinterpret_cast<cuComplex*>(&betaT),
                             reinterpret_cast<cuComplex*>(yd.mutPtr),
-                            int(yd.inc)),
+                            checkedVendorInt<alpaka::api::Cuda>(yd.inc, "inc")),
                         "cublasCgemv");
                 else
                     check(
                         cublasZgemv(
                             handle,
                             op,
-                            int(ad.cols),
-                            int(ad.rows),
+                            checkedVendorInt<alpaka::api::Cuda>(ad.cols, "cols"),
+                            checkedVendorInt<alpaka::api::Cuda>(ad.rows, "rows"),
                             reinterpret_cast<cuDoubleComplex*>(&alphaT),
                             reinterpret_cast<cuDoubleComplex const*>(ad.constPtr),
-                            int(ad.ld),
+                            checkedVendorInt<alpaka::api::Cuda>(ad.ld, "ld"),
                             reinterpret_cast<cuDoubleComplex const*>(xd.constPtr),
-                            int(xd.inc),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"),
                             reinterpret_cast<cuDoubleComplex*>(&betaT),
                             reinterpret_cast<cuDoubleComplex*>(yd.mutPtr),
-                            int(yd.inc)),
+                            checkedVendorInt<alpaka::api::Cuda>(yd.inc, "inc")),
                         "cublasZgemv");
             });
     }
@@ -902,13 +928,13 @@ namespace alpaka::blas::internal
                             toCublasFill(colTriangle),
                             colOp,
                             toCublasDiag(ad.diagonal),
-                            int(bd.cols),
-                            int(bd.rows),
+                            checkedVendorInt<alpaka::api::Cuda>(bd.cols, "cols"),
+                            checkedVendorInt<alpaka::api::Cuda>(bd.rows, "rows"),
                             &alphaT,
                             static_cast<float const*>(ad.constPtr),
-                            int(ad.ld),
+                            checkedVendorInt<alpaka::api::Cuda>(ad.ld, "ld"),
                             static_cast<float*>(bd.mutPtr),
-                            int(bd.ld)),
+                            checkedVendorInt<alpaka::api::Cuda>(bd.ld, "ld")),
                         "cublasStrsm");
                 else if constexpr(std::same_as<T, double>)
                     check(
@@ -918,13 +944,13 @@ namespace alpaka::blas::internal
                             toCublasFill(colTriangle),
                             colOp,
                             toCublasDiag(ad.diagonal),
-                            int(bd.cols),
-                            int(bd.rows),
+                            checkedVendorInt<alpaka::api::Cuda>(bd.cols, "cols"),
+                            checkedVendorInt<alpaka::api::Cuda>(bd.rows, "rows"),
                             &alphaT,
                             static_cast<double const*>(ad.constPtr),
-                            int(ad.ld),
+                            checkedVendorInt<alpaka::api::Cuda>(ad.ld, "ld"),
                             static_cast<double*>(bd.mutPtr),
-                            int(bd.ld)),
+                            checkedVendorInt<alpaka::api::Cuda>(bd.ld, "ld")),
                         "cublasDtrsm");
                 else if constexpr(std::same_as<T, alpaka::math::Complex<float>>)
                     check(
@@ -934,13 +960,13 @@ namespace alpaka::blas::internal
                             toCublasFill(colTriangle),
                             colOp,
                             toCublasDiag(ad.diagonal),
-                            int(bd.cols),
-                            int(bd.rows),
+                            checkedVendorInt<alpaka::api::Cuda>(bd.cols, "cols"),
+                            checkedVendorInt<alpaka::api::Cuda>(bd.rows, "rows"),
                             reinterpret_cast<cuComplex*>(&alphaT),
                             reinterpret_cast<cuComplex const*>(ad.constPtr),
-                            int(ad.ld),
+                            checkedVendorInt<alpaka::api::Cuda>(ad.ld, "ld"),
                             reinterpret_cast<cuComplex*>(bd.mutPtr),
-                            int(bd.ld)),
+                            checkedVendorInt<alpaka::api::Cuda>(bd.ld, "ld")),
                         "cublasCtrsm");
                 else
                     check(
@@ -950,13 +976,13 @@ namespace alpaka::blas::internal
                             toCublasFill(colTriangle),
                             colOp,
                             toCublasDiag(ad.diagonal),
-                            int(bd.cols),
-                            int(bd.rows),
+                            checkedVendorInt<alpaka::api::Cuda>(bd.cols, "cols"),
+                            checkedVendorInt<alpaka::api::Cuda>(bd.rows, "rows"),
                             reinterpret_cast<cuDoubleComplex*>(&alphaT),
                             reinterpret_cast<cuDoubleComplex const*>(ad.constPtr),
-                            int(ad.ld),
+                            checkedVendorInt<alpaka::api::Cuda>(ad.ld, "ld"),
                             reinterpret_cast<cuDoubleComplex*>(bd.mutPtr),
-                            int(bd.ld)),
+                            checkedVendorInt<alpaka::api::Cuda>(bd.ld, "ld")),
                         "cublasZtrsm");
             });
     }
