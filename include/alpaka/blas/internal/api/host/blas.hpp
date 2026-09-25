@@ -323,7 +323,13 @@ namespace alpaka::blas::internal
         auto const xd = makeVectorDescriptor(x);
         queue.enqueueNativeFn(
             [=](auto)
-            { OpenBlas<T>::scal(checkedVendorInt<alpaka::api::Host>(xd.n, "n"), static_cast<T>(alpha), static_cast<T*>(xd.mutPtr), checkedVendorInt<alpaka::api::Host>(xd.inc, "inc")); });
+            {
+                OpenBlas<T>::scal(
+                    checkedVendorInt<alpaka::api::Host>(xd.n, "n"),
+                    static_cast<T>(alpha),
+                    static_cast<T*>(xd.mutPtr),
+                    checkedVendorInt<alpaka::api::Host>(xd.inc, "inc"));
+            });
     }
 
     template<alpaka::concepts::DeviceKind T_DeviceKind>
@@ -417,7 +423,12 @@ namespace alpaka::blas::internal
         auto* resultPtr = alpaka::onHost::data(getView(result));
         queue.enqueueNativeFn(
             [=](auto)
-            { resultPtr[0] = OpenBlas<T>::nrm2(checkedVendorInt<alpaka::api::Host>(xd.n, "n"), static_cast<T const*>(xd.constPtr), checkedVendorInt<alpaka::api::Host>(xd.inc, "inc")); });
+            {
+                resultPtr[0] = OpenBlas<T>::nrm2(
+                    checkedVendorInt<alpaka::api::Host>(xd.n, "n"),
+                    static_cast<T const*>(xd.constPtr),
+                    checkedVendorInt<alpaka::api::Host>(xd.inc, "inc"));
+            });
     }
 
     template<alpaka::concepts::DeviceKind T_DeviceKind>
@@ -433,7 +444,12 @@ namespace alpaka::blas::internal
         auto* resultPtr = alpaka::onHost::data(getView(result));
         queue.enqueueNativeFn(
             [=](auto)
-            { resultPtr[0] = OpenBlas<T>::asum(checkedVendorInt<alpaka::api::Host>(xd.n, "n"), static_cast<T const*>(xd.constPtr), checkedVendorInt<alpaka::api::Host>(xd.inc, "inc")); });
+            {
+                resultPtr[0] = OpenBlas<T>::asum(
+                    checkedVendorInt<alpaka::api::Host>(xd.n, "n"),
+                    static_cast<T const*>(xd.constPtr),
+                    checkedVendorInt<alpaka::api::Host>(xd.inc, "inc"));
+            });
     }
 
     template<alpaka::concepts::DeviceKind T_DeviceKind>
@@ -449,7 +465,12 @@ namespace alpaka::blas::internal
         auto* resultPtr = alpaka::onHost::data(getView(result));
         queue.enqueueNativeFn(
             [=](auto)
-            { resultPtr[0] = OpenBlas<T>::iamax(checkedVendorInt<alpaka::api::Host>(xd.n, "n"), static_cast<T const*>(xd.constPtr), checkedVendorInt<alpaka::api::Host>(xd.inc, "inc")); });
+            {
+                resultPtr[0] = OpenBlas<T>::iamax(
+                    checkedVendorInt<alpaka::api::Host>(xd.n, "n"),
+                    static_cast<T const*>(xd.constPtr),
+                    checkedVendorInt<alpaka::api::Host>(xd.inc, "inc"));
+            });
     }
 
     template<typename T>
@@ -467,9 +488,7 @@ namespace alpaka::blas::internal
                 toCblasTranspose(B.transpose),
                 checkedVendorInt<alpaka::api::Host>(C.rows, "rows"),
                 checkedVendorInt<alpaka::api::Host>(C.cols, "cols"),
-                checkedVendorInt<alpaka::api::Host>(
-                    A.transpose == Transpose::none ? A.cols : A.rows,
-                    "gemm k"),
+                checkedVendorInt<alpaka::api::Host>(A.transpose == Transpose::none ? A.cols : A.rows, "gemm k"),
                 alpha,
                 static_cast<float const*>(A.constPtr),
                 checkedVendorInt<alpaka::api::Host>(A.ld, "ld"),
@@ -485,9 +504,7 @@ namespace alpaka::blas::internal
                 toCblasTranspose(B.transpose),
                 checkedVendorInt<alpaka::api::Host>(C.rows, "rows"),
                 checkedVendorInt<alpaka::api::Host>(C.cols, "cols"),
-                checkedVendorInt<alpaka::api::Host>(
-                    A.transpose == Transpose::none ? A.cols : A.rows,
-                    "gemm k"),
+                checkedVendorInt<alpaka::api::Host>(A.transpose == Transpose::none ? A.cols : A.rows, "gemm k"),
                 alpha,
                 static_cast<double const*>(A.constPtr),
                 checkedVendorInt<alpaka::api::Host>(A.ld, "ld"),
@@ -503,9 +520,7 @@ namespace alpaka::blas::internal
                 toCblasTranspose(B.transpose),
                 checkedVendorInt<alpaka::api::Host>(C.rows, "rows"),
                 checkedVendorInt<alpaka::api::Host>(C.cols, "cols"),
-                checkedVendorInt<alpaka::api::Host>(
-                    A.transpose == Transpose::none ? A.cols : A.rows,
-                    "gemm k"),
+                checkedVendorInt<alpaka::api::Host>(A.transpose == Transpose::none ? A.cols : A.rows, "gemm k"),
                 &alpha,
                 static_cast<T const*>(A.constPtr),
                 checkedVendorInt<alpaka::api::Host>(A.ld, "ld"),
@@ -521,9 +536,7 @@ namespace alpaka::blas::internal
                 toCblasTranspose(B.transpose),
                 checkedVendorInt<alpaka::api::Host>(C.rows, "rows"),
                 checkedVendorInt<alpaka::api::Host>(C.cols, "cols"),
-                checkedVendorInt<alpaka::api::Host>(
-                    A.transpose == Transpose::none ? A.cols : A.rows,
-                    "gemm k"),
+                checkedVendorInt<alpaka::api::Host>(A.transpose == Transpose::none ? A.cols : A.rows, "gemm k"),
                 &alpha,
                 static_cast<T const*>(A.constPtr),
                 checkedVendorInt<alpaka::api::Host>(A.ld, "ld"),

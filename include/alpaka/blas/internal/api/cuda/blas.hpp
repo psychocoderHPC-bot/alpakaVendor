@@ -52,6 +52,8 @@ namespace alpaka::blas::internal
     {
         if(status != CUBLAS_STATUS_SUCCESS)
             throw std::invalid_argument(
+                // int(status) only formats the vendor error enum; it is not a descriptor cast (descriptor narrowing
+                // goes through checkedVendorInt above).
                 std::string{what} + " failed with cuBLAS error code " + std::to_string(int(status)));
     }
 
@@ -288,11 +290,21 @@ namespace alpaka::blas::internal
                 T alphaT = static_cast<T>(alpha);
                 if constexpr(std::same_as<T, float>)
                     check(
-                        cublasSscal(handle, checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"), &alphaT, static_cast<float*>(xd.mutPtr), checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc")),
+                        cublasSscal(
+                            handle,
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
+                            &alphaT,
+                            static_cast<float*>(xd.mutPtr),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc")),
                         "cublasSscal");
                 else if constexpr(std::same_as<T, double>)
                     check(
-                        cublasDscal(handle, checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"), &alphaT, static_cast<double*>(xd.mutPtr), checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc")),
+                        cublasDscal(
+                            handle,
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
+                            &alphaT,
+                            static_cast<double*>(xd.mutPtr),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc")),
                         "cublasDscal");
                 else if constexpr(std::same_as<T, alpaka::math::Complex<float>>)
                     check(
@@ -534,7 +546,12 @@ namespace alpaka::blas::internal
                 check(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_DEVICE), "cublasSetPointerMode");
                 if constexpr(std::same_as<T, float>)
                     check(
-                        cublasSnrm2(handle, checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"), static_cast<float const*>(xd.constPtr), checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"), resultPtr),
+                        cublasSnrm2(
+                            handle,
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
+                            static_cast<float const*>(xd.constPtr),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"),
+                            resultPtr),
                         "cublasSnrm2");
                 else if constexpr(std::same_as<T, double>)
                     check(
@@ -585,7 +602,12 @@ namespace alpaka::blas::internal
                 check(cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_DEVICE), "cublasSetPointerMode");
                 if constexpr(std::same_as<T, float>)
                     check(
-                        cublasSasum(handle, checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"), static_cast<float const*>(xd.constPtr), checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"), resultPtr),
+                        cublasSasum(
+                            handle,
+                            checkedVendorInt<alpaka::api::Cuda>(xd.n, "n"),
+                            static_cast<float const*>(xd.constPtr),
+                            checkedVendorInt<alpaka::api::Cuda>(xd.inc, "inc"),
+                            resultPtr),
                         "cublasSasum");
                 else if constexpr(std::same_as<T, double>)
                     check(

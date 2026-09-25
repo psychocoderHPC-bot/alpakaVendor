@@ -192,7 +192,13 @@ namespace alpaka::blas::internal
             [=](sycl::queue q) -> sycl::event
             {
                 auto deps = std::vector<sycl::event>{q.ext_oneapi_submit_barrier()};
-                return oneapi::mkl::blas::scal(q, checkedVendorInt<alpaka::api::OneApi>(xd.n, "n"), alphaT, oneMklPtr<T>(xd.mutPtr), checkedVendorInt<alpaka::api::OneApi>(xd.inc, "inc"), deps);
+                return oneapi::mkl::blas::scal(
+                    q,
+                    checkedVendorInt<alpaka::api::OneApi>(xd.n, "n"),
+                    alphaT,
+                    oneMklPtr<T>(xd.mutPtr),
+                    checkedVendorInt<alpaka::api::OneApi>(xd.inc, "inc"),
+                    deps);
             });
     }
 
@@ -463,8 +469,9 @@ namespace alpaka::blas::internal
                         checkedVendorInt<alpaka::api::OneApi>(cd.rows, "rows"),
                         checkedVendorInt<alpaka::api::OneApi>(cd.cols, "cols"),
                         checkedVendorInt<alpaka::api::OneApi>(
-                        ad.transpose == Transpose::none ? checkedVendorInt<alpaka::api::OneApi>(ad.cols, "cols") : checkedVendorInt<alpaka::api::OneApi>(ad.rows, "rows"),
-                        "gemm k"),
+                            ad.transpose == Transpose::none ? checkedVendorInt<alpaka::api::OneApi>(ad.cols, "cols")
+                                                            : checkedVendorInt<alpaka::api::OneApi>(ad.rows, "rows"),
+                            "gemm k"),
                         alphaT,
                         oneMklPtr<T>(ad.constPtr),
                         checkedVendorInt<alpaka::api::OneApi>(ad.ld, "ld"),
@@ -483,7 +490,8 @@ namespace alpaka::blas::internal
                     checkedVendorInt<alpaka::api::OneApi>(cd.rows, "rows"),
                     checkedVendorInt<alpaka::api::OneApi>(cd.cols, "cols"),
                     checkedVendorInt<alpaka::api::OneApi>(
-                        ad.transpose == Transpose::none ? checkedVendorInt<alpaka::api::OneApi>(ad.cols, "cols") : checkedVendorInt<alpaka::api::OneApi>(ad.rows, "rows"),
+                        ad.transpose == Transpose::none ? checkedVendorInt<alpaka::api::OneApi>(ad.cols, "cols")
+                                                        : checkedVendorInt<alpaka::api::OneApi>(ad.rows, "rows"),
                         "gemm k"),
                     alphaT,
                     oneMklPtr<T>(ad.constPtr),
@@ -527,8 +535,9 @@ namespace alpaka::blas::internal
                         checkedVendorInt<alpaka::api::OneApi>(cd.rows, "rows"),
                         checkedVendorInt<alpaka::api::OneApi>(cd.cols, "cols"),
                         checkedVendorInt<alpaka::api::OneApi>(
-                        ad.transpose == Transpose::none ? checkedVendorInt<alpaka::api::OneApi>(ad.cols, "cols") : checkedVendorInt<alpaka::api::OneApi>(ad.rows, "rows"),
-                        "gemm k"),
+                            ad.transpose == Transpose::none ? checkedVendorInt<alpaka::api::OneApi>(ad.cols, "cols")
+                                                            : checkedVendorInt<alpaka::api::OneApi>(ad.rows, "rows"),
+                            "gemm k"),
                         alphaT,
                         oneMklPtr<T>(ad.constPtr),
                         checkedVendorInt<alpaka::api::OneApi>(ad.ld, "ld"),
@@ -551,7 +560,8 @@ namespace alpaka::blas::internal
                     checkedVendorInt<alpaka::api::OneApi>(cd.rows, "rows"),
                     checkedVendorInt<alpaka::api::OneApi>(cd.cols, "cols"),
                     checkedVendorInt<alpaka::api::OneApi>(
-                        ad.transpose == Transpose::none ? checkedVendorInt<alpaka::api::OneApi>(ad.cols, "cols") : checkedVendorInt<alpaka::api::OneApi>(ad.rows, "rows"),
+                        ad.transpose == Transpose::none ? checkedVendorInt<alpaka::api::OneApi>(ad.cols, "cols")
+                                                        : checkedVendorInt<alpaka::api::OneApi>(ad.rows, "rows"),
                         "gemm k"),
                     alphaT,
                     oneMklPtr<T>(ad.constPtr),
@@ -642,11 +652,13 @@ namespace alpaka::blas::internal
         // cases (including the beta scaling semantics) before dispatch, so this routine is only called for a
         // well-defined update (n, k > 0).
         auto const n = checkedVendorInt<alpaka::api::OneApi>(
-                        ad.transpose == Transpose::none ? checkedVendorInt<alpaka::api::OneApi>(ad.rows, "rows") : checkedVendorInt<alpaka::api::OneApi>(ad.cols, "cols"),
-                        "gemm k");
+            ad.transpose == Transpose::none ? checkedVendorInt<alpaka::api::OneApi>(ad.rows, "rows")
+                                            : checkedVendorInt<alpaka::api::OneApi>(ad.cols, "cols"),
+            "gemm k");
         auto const k = checkedVendorInt<alpaka::api::OneApi>(
-                        ad.transpose == Transpose::none ? checkedVendorInt<alpaka::api::OneApi>(ad.cols, "cols") : checkedVendorInt<alpaka::api::OneApi>(ad.rows, "rows"),
-                        "gemm k");
+            ad.transpose == Transpose::none ? checkedVendorInt<alpaka::api::OneApi>(ad.cols, "cols")
+                                            : checkedVendorInt<alpaka::api::OneApi>(ad.rows, "rows"),
+            "gemm k");
         // oneMKL herk expects real scalars (value_or_pointer<Treal>), so use REAL coefficients, not the complex type.
         auto const alphaT = static_cast<Real_t<T>>(alpha);
         auto const betaT = static_cast<Real_t<T>>(beta);
@@ -699,11 +711,13 @@ namespace alpaka::blas::internal
         auto const ad = makeMatrixDescriptor(A);
         auto const cd = makeMatrixDescriptor(C);
         auto const n = checkedVendorInt<alpaka::api::OneApi>(
-                        ad.transpose == Transpose::none ? checkedVendorInt<alpaka::api::OneApi>(ad.rows, "rows") : checkedVendorInt<alpaka::api::OneApi>(ad.cols, "cols"),
-                        "gemm k");
+            ad.transpose == Transpose::none ? checkedVendorInt<alpaka::api::OneApi>(ad.rows, "rows")
+                                            : checkedVendorInt<alpaka::api::OneApi>(ad.cols, "cols"),
+            "gemm k");
         auto const k = checkedVendorInt<alpaka::api::OneApi>(
-                        ad.transpose == Transpose::none ? checkedVendorInt<alpaka::api::OneApi>(ad.cols, "cols") : checkedVendorInt<alpaka::api::OneApi>(ad.rows, "rows"),
-                        "gemm k");
+            ad.transpose == Transpose::none ? checkedVendorInt<alpaka::api::OneApi>(ad.cols, "cols")
+                                            : checkedVendorInt<alpaka::api::OneApi>(ad.rows, "rows"),
+            "gemm k");
         // For real operands conjugateTransposed is the identity-conjugated transpose: normalize to transposed.
         auto const op
             = ad.transpose == Transpose::none ? oneapi::mkl::transpose::nontrans : oneapi::mkl::transpose::trans;

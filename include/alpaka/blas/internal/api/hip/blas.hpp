@@ -20,6 +20,8 @@ namespace alpaka::blas::internal
     {
         if(status != rocblas_status_success)
             throw std::invalid_argument(
+                // int(status) only formats the vendor error enum; it is not a descriptor cast (descriptor narrowing
+                // goes through checkedVendorInt above).
                 std::string{what} + " failed with rocBLAS error code " + std::to_string(int(status)));
     }
 
@@ -258,11 +260,21 @@ namespace alpaka::blas::internal
                 T alphaT = static_cast<T>(alpha);
                 if constexpr(std::same_as<T, float>)
                     check(
-                        rocblas_sscal(handle, checkedVendorInt<alpaka::api::Hip>(xd.n, "n"), &alphaT, static_cast<float*>(xd.mutPtr), checkedVendorInt<alpaka::api::Hip>(xd.inc, "inc")),
+                        rocblas_sscal(
+                            handle,
+                            checkedVendorInt<alpaka::api::Hip>(xd.n, "n"),
+                            &alphaT,
+                            static_cast<float*>(xd.mutPtr),
+                            checkedVendorInt<alpaka::api::Hip>(xd.inc, "inc")),
                         "rocblas_sscal");
                 else if constexpr(std::same_as<T, double>)
                     check(
-                        rocblas_dscal(handle, checkedVendorInt<alpaka::api::Hip>(xd.n, "n"), &alphaT, static_cast<double*>(xd.mutPtr), checkedVendorInt<alpaka::api::Hip>(xd.inc, "inc")),
+                        rocblas_dscal(
+                            handle,
+                            checkedVendorInt<alpaka::api::Hip>(xd.n, "n"),
+                            &alphaT,
+                            static_cast<double*>(xd.mutPtr),
+                            checkedVendorInt<alpaka::api::Hip>(xd.inc, "inc")),
                         "rocblas_dscal");
                 else if constexpr(std::same_as<T, alpaka::math::Complex<float>>)
                     check(
@@ -500,11 +512,21 @@ namespace alpaka::blas::internal
                 setPointerMode<T>(handle);
                 if constexpr(std::same_as<T, float>)
                     check(
-                        rocblas_snrm2(handle, checkedVendorInt<alpaka::api::Hip>(xd.n, "n"), static_cast<float const*>(xd.constPtr), checkedVendorInt<alpaka::api::Hip>(xd.inc, "inc"), resultPtr),
+                        rocblas_snrm2(
+                            handle,
+                            checkedVendorInt<alpaka::api::Hip>(xd.n, "n"),
+                            static_cast<float const*>(xd.constPtr),
+                            checkedVendorInt<alpaka::api::Hip>(xd.inc, "inc"),
+                            resultPtr),
                         "rocblas_snrm2");
                 else if constexpr(std::same_as<T, double>)
                     check(
-                        rocblas_dnrm2(handle, checkedVendorInt<alpaka::api::Hip>(xd.n, "n"), static_cast<double const*>(xd.constPtr), checkedVendorInt<alpaka::api::Hip>(xd.inc, "inc"), resultPtr),
+                        rocblas_dnrm2(
+                            handle,
+                            checkedVendorInt<alpaka::api::Hip>(xd.n, "n"),
+                            static_cast<double const*>(xd.constPtr),
+                            checkedVendorInt<alpaka::api::Hip>(xd.inc, "inc"),
+                            resultPtr),
                         "rocblas_dnrm2");
                 else if constexpr(std::same_as<T, alpaka::math::Complex<float>>)
                     check(
@@ -545,11 +567,21 @@ namespace alpaka::blas::internal
                 setPointerMode<T>(handle);
                 if constexpr(std::same_as<T, float>)
                     check(
-                        rocblas_sasum(handle, checkedVendorInt<alpaka::api::Hip>(xd.n, "n"), static_cast<float const*>(xd.constPtr), checkedVendorInt<alpaka::api::Hip>(xd.inc, "inc"), resultPtr),
+                        rocblas_sasum(
+                            handle,
+                            checkedVendorInt<alpaka::api::Hip>(xd.n, "n"),
+                            static_cast<float const*>(xd.constPtr),
+                            checkedVendorInt<alpaka::api::Hip>(xd.inc, "inc"),
+                            resultPtr),
                         "rocblas_sasum");
                 else if constexpr(std::same_as<T, double>)
                     check(
-                        rocblas_dasum(handle, checkedVendorInt<alpaka::api::Hip>(xd.n, "n"), static_cast<double const*>(xd.constPtr), checkedVendorInt<alpaka::api::Hip>(xd.inc, "inc"), resultPtr),
+                        rocblas_dasum(
+                            handle,
+                            checkedVendorInt<alpaka::api::Hip>(xd.n, "n"),
+                            static_cast<double const*>(xd.constPtr),
+                            checkedVendorInt<alpaka::api::Hip>(xd.inc, "inc"),
+                            resultPtr),
                         "rocblas_dasum");
                 else if constexpr(std::same_as<T, alpaka::math::Complex<float>>)
                     check(
@@ -665,8 +697,8 @@ namespace alpaka::blas::internal
                             checkedVendorInt<alpaka::api::Hip>(cd.cols, "cols"),
                             checkedVendorInt<alpaka::api::Hip>(cd.rows, "rows"),
                             checkedVendorInt<alpaka::api::Hip>(
-                            ad.transpose == Transpose::none ?ad.cols : ad.rows,
-                            "gemm k"),
+                                ad.transpose == Transpose::none ? ad.cols : ad.rows,
+                                "gemm k"),
                             &alphaT,
                             static_cast<float const*>(bd.constPtr),
                             checkedVendorInt<alpaka::api::Hip>(bd.ld, "ld"),
@@ -685,8 +717,8 @@ namespace alpaka::blas::internal
                             checkedVendorInt<alpaka::api::Hip>(cd.cols, "cols"),
                             checkedVendorInt<alpaka::api::Hip>(cd.rows, "rows"),
                             checkedVendorInt<alpaka::api::Hip>(
-                            ad.transpose == Transpose::none ?ad.cols : ad.rows,
-                            "gemm k"),
+                                ad.transpose == Transpose::none ? ad.cols : ad.rows,
+                                "gemm k"),
                             &alphaT,
                             static_cast<double const*>(bd.constPtr),
                             checkedVendorInt<alpaka::api::Hip>(bd.ld, "ld"),
@@ -705,8 +737,8 @@ namespace alpaka::blas::internal
                             checkedVendorInt<alpaka::api::Hip>(cd.cols, "cols"),
                             checkedVendorInt<alpaka::api::Hip>(cd.rows, "rows"),
                             checkedVendorInt<alpaka::api::Hip>(
-                            ad.transpose == Transpose::none ?ad.cols : ad.rows,
-                            "gemm k"),
+                                ad.transpose == Transpose::none ? ad.cols : ad.rows,
+                                "gemm k"),
                             reinterpret_cast<rocblas_float_complex*>(&alphaT),
                             reinterpret_cast<rocblas_float_complex const*>(bd.constPtr),
                             checkedVendorInt<alpaka::api::Hip>(bd.ld, "ld"),
@@ -725,8 +757,8 @@ namespace alpaka::blas::internal
                             checkedVendorInt<alpaka::api::Hip>(cd.cols, "cols"),
                             checkedVendorInt<alpaka::api::Hip>(cd.rows, "rows"),
                             checkedVendorInt<alpaka::api::Hip>(
-                            ad.transpose == Transpose::none ?ad.cols : ad.rows,
-                            "gemm k"),
+                                ad.transpose == Transpose::none ? ad.cols : ad.rows,
+                                "gemm k"),
                             reinterpret_cast<rocblas_double_complex*>(&alphaT),
                             reinterpret_cast<rocblas_double_complex const*>(bd.constPtr),
                             checkedVendorInt<alpaka::api::Hip>(bd.ld, "ld"),
@@ -770,8 +802,8 @@ namespace alpaka::blas::internal
                             checkedVendorInt<alpaka::api::Hip>(cd.cols, "cols"),
                             checkedVendorInt<alpaka::api::Hip>(cd.rows, "rows"),
                             checkedVendorInt<alpaka::api::Hip>(
-                            ad.transpose == Transpose::none ?ad.cols : ad.rows,
-                            "gemm k"),
+                                ad.transpose == Transpose::none ? ad.cols : ad.rows,
+                                "gemm k"),
                             &alphaT,
                             static_cast<float const*>(bd.constPtr),
                             checkedVendorInt<alpaka::api::Hip>(bd.ld, "ld"),
@@ -794,8 +826,8 @@ namespace alpaka::blas::internal
                             checkedVendorInt<alpaka::api::Hip>(cd.cols, "cols"),
                             checkedVendorInt<alpaka::api::Hip>(cd.rows, "rows"),
                             checkedVendorInt<alpaka::api::Hip>(
-                            ad.transpose == Transpose::none ?ad.cols : ad.rows,
-                            "gemm k"),
+                                ad.transpose == Transpose::none ? ad.cols : ad.rows,
+                                "gemm k"),
                             &alphaT,
                             static_cast<double const*>(bd.constPtr),
                             checkedVendorInt<alpaka::api::Hip>(bd.ld, "ld"),
@@ -818,8 +850,8 @@ namespace alpaka::blas::internal
                             checkedVendorInt<alpaka::api::Hip>(cd.cols, "cols"),
                             checkedVendorInt<alpaka::api::Hip>(cd.rows, "rows"),
                             checkedVendorInt<alpaka::api::Hip>(
-                            ad.transpose == Transpose::none ?ad.cols : ad.rows,
-                            "gemm k"),
+                                ad.transpose == Transpose::none ? ad.cols : ad.rows,
+                                "gemm k"),
                             reinterpret_cast<rocblas_float_complex*>(&alphaT),
                             reinterpret_cast<rocblas_float_complex const*>(bd.constPtr),
                             checkedVendorInt<alpaka::api::Hip>(bd.ld, "ld"),
@@ -842,8 +874,8 @@ namespace alpaka::blas::internal
                             checkedVendorInt<alpaka::api::Hip>(cd.cols, "cols"),
                             checkedVendorInt<alpaka::api::Hip>(cd.rows, "rows"),
                             checkedVendorInt<alpaka::api::Hip>(
-                            ad.transpose == Transpose::none ?ad.cols : ad.rows,
-                            "gemm k"),
+                                ad.transpose == Transpose::none ? ad.cols : ad.rows,
+                                "gemm k"),
                             reinterpret_cast<rocblas_double_complex*>(&alphaT),
                             reinterpret_cast<rocblas_double_complex const*>(bd.constPtr),
                             checkedVendorInt<alpaka::api::Hip>(bd.ld, "ld"),
@@ -1056,12 +1088,10 @@ namespace alpaka::blas::internal
         auto const cd = makeMatrixDescriptor(C);
         // Logical (post-op) extents: op(A) is n x k. The public wrapper intercepts the degenerate n == 0 / k == 0
         // cases before dispatch, so this routine is only called for a well-defined update (n, k > 0).
-        auto const n = checkedVendorInt<alpaka::api::Hip>(
-                            ad.transpose == Transpose::none ?ad.rows : ad.cols,
-                            "gemm k");
-        auto const k = checkedVendorInt<alpaka::api::Hip>(
-                            ad.transpose == Transpose::none ?ad.cols : ad.rows,
-                            "gemm k");
+        auto const n
+            = checkedVendorInt<alpaka::api::Hip>(ad.transpose == Transpose::none ? ad.rows : ad.cols, "gemm k");
+        auto const k
+            = checkedVendorInt<alpaka::api::Hip>(ad.transpose == Transpose::none ? ad.cols : ad.rows, "gemm k");
         auto const nInt = checkedVendorInt<alpaka::api::Hip>(n, "herk n");
         auto const kInt = checkedVendorInt<alpaka::api::Hip>(k, "herk k");
         auto const adLd = checkedVendorInt<alpaka::api::Hip>(ad.ld, "herk A ld");
@@ -1132,12 +1162,10 @@ namespace alpaka::blas::internal
         static_assert(std::same_as<decltype(beta), T>, "syrk beta must arrive as the canonical scalar.");
         auto const ad = makeMatrixDescriptor(A);
         auto const cd = makeMatrixDescriptor(C);
-        auto const n = checkedVendorInt<alpaka::api::Hip>(
-                            ad.transpose == Transpose::none ?ad.rows : ad.cols,
-                            "gemm k");
-        auto const k = checkedVendorInt<alpaka::api::Hip>(
-                            ad.transpose == Transpose::none ?ad.cols : ad.rows,
-                            "gemm k");
+        auto const n
+            = checkedVendorInt<alpaka::api::Hip>(ad.transpose == Transpose::none ? ad.rows : ad.cols, "gemm k");
+        auto const k
+            = checkedVendorInt<alpaka::api::Hip>(ad.transpose == Transpose::none ? ad.cols : ad.rows, "gemm k");
         auto const nInt = checkedVendorInt<alpaka::api::Hip>(n, "syrk n");
         auto const kInt = checkedVendorInt<alpaka::api::Hip>(k, "syrk k");
         auto const adLd = checkedVendorInt<alpaka::api::Hip>(ad.ld, "syrk A ld");
