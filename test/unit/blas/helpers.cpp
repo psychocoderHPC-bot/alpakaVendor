@@ -179,7 +179,7 @@ TEMPLATE_LIST_TEST_CASE(
 }
 
 TEMPLATE_LIST_TEST_CASE(
-    "blas vector descriptors reject a zero element stride (inc == 0) and batched batchStride < rows * ld",
+    "blas vector descriptors reject a zero element stride (inc == 0) and batched batchStride below the minimal batch span",
     "[unit][blas][layout]",
     TestBackends)
 {
@@ -195,9 +195,12 @@ TEMPLATE_LIST_TEST_CASE(
     auto unitStrideVector = PaddedVectorView{buffer.data(), sizeof(float)};
     CHECK(alpaka::blas::internal::makeVectorDescriptor(unitStrideVector).inc == 1);
 
-    // Batched matrix: every batch needs at least rows * ld elements; a smaller batch stride makes consecutive
-    // batches overlap. extent {batch=2, rows=3, cols=4} => ld >= 4 and rows * ld >= 12 elements. A batch pitch of
-    // 24 bytes is 6 elements and must be rejected; 48 bytes is exactly 12 elements and is the positive control.
+    // Batched matrix: consecutive batches must not overlap. The last element a batch accesses is at
+    // (rows - 1) * ld + (cols - 1), so the minimal exclusive span is minSpan = (rows - 1) * ld + cols (this
+    // correctly allows row padding, ld > cols).
+    //
+    // Positive control (dense): extent {batch=2, rows=3, cols=4}, ld == 4 => minSpan = 2 * 4 + 4 = 12 elements.
+    // A batch pitch of 48 bytes is exactly 12 elements and must be accepted.
     auto validBatch = alpaka::makeMdSpan(
         buffer.data(),
         alpaka::Vec<uint32_t, 3u>{2u, 3u, 4u},
@@ -206,12 +209,35 @@ TEMPLATE_LIST_TEST_CASE(
     CHECK(validDesc.ld == 4);
     CHECK(validDesc.batchStride == 12);
 
+    // Positive control (padded): extent {batch=2, rows=2, cols=2}, ld == 3 => minSpan = 1 * 3 + 2 = 5 elements.
+    // A batch pitch of 5 elements (20 bytes) is overlap-free despite being smaller than rows * ld == 6, so it
+    // must NOT throw. This is the regression case for the former rows * ld bound.
+    auto paddedBatch = alpaka::makeMdSpan(
+        buffer.data(),
+        alpaka::Vec<uint32_t, 3u>{2u, 2u, 2u},
+        alpaka::Vec<std::size_t, 3u>{5u * sizeof(float), 3u * sizeof(float), sizeof(float)});
+    auto paddedDesc = alpaka::blas::internal::makeBatchedMatrixDescriptor(paddedBatch);
+    CHECK(paddedDesc.rows == 2);
+    CHECK(paddedDesc.cols == 2);
+    CHECK(paddedDesc.ld == 3);
+    CHECK(paddedDesc.batchStride == 5);
+
+    // Negative: one element below minSpan for the dense case (11 elements).
     auto shortBatch = alpaka::makeMdSpan(
         buffer.data(),
         alpaka::Vec<uint32_t, 3u>{2u, 3u, 4u},
-        alpaka::Vec<std::size_t, 3u>{24u, 16u, sizeof(float)});
+        alpaka::Vec<std::size_t, 3u>{11u * sizeof(float), 16u, sizeof(float)});
     CHECK_THROWS_WITH(
         alpaka::blas::internal::makeBatchedMatrixDescriptor(shortBatch),
+        Catch::Matchers::ContainsSubstring("batchStride"));
+
+    // Negative: one element below minSpan for the padded case (4 elements vs. required 5).
+    auto shortPaddedBatch = alpaka::makeMdSpan(
+        buffer.data(),
+        alpaka::Vec<uint32_t, 3u>{2u, 2u, 2u},
+        alpaka::Vec<std::size_t, 3u>{4u * sizeof(float), 3u * sizeof(float), sizeof(float)});
+    CHECK_THROWS_WITH(
+        alpaka::blas::internal::makeBatchedMatrixDescriptor(shortPaddedBatch),
         Catch::Matchers::ContainsSubstring("batchStride"));
 }
 

@@ -244,16 +244,23 @@ namespace alpaka::blas::internal
         auto const strideBatch = pitchToElements(pt.z(), sizeof(Value_t<View>), "Batch pitch (z axis)");
         if(strideRow < ex.x())
             throw std::invalid_argument("Invalid batched matrix leading dimension.");
-        // Every batch occupies at least rows * ld elements (row-major, ld >= cols). A smaller batch stride makes
-        // consecutive batches overlap. The product is computed overflow-safely (saturating at INT64_MAX): a saturated
-        // product is larger than any representable batchStride, so the rejection below still fires.
+        // The last element a batch can access is at (rows - 1) * strideRow + (cols - 1) (row-major, strideRow >=
+        // cols). The minimal exclusive span that keeps the next batch from overlapping is therefore
+        // minSpan = (rows - 1) * strideRow + cols; note this correctly accounts for row padding (strideRow > cols).
+        // A smaller batch stride makes consecutive batches overlap. The product is computed overflow-safely
+        // (saturating at INT64_MAX): a saturated product is larger than any representable batchStride, so the
+        // rejection below still fires.
         auto const rowsForBatch = checkedCast<std::int64_t>(ex.y(), "matrix rows");
-        auto const batchElements
-            = (rowsForBatch > 0 && strideRow > std::numeric_limits<std::int64_t>::max() / rowsForBatch)
+        auto const colsForBatch = checkedCast<std::int64_t>(ex.x(), "matrix cols");
+        std::int64_t const rowSpan = rowsForBatch - 1;
+        auto const minSpan
+            = (rowSpan != 0 && strideRow > (std::numeric_limits<std::int64_t>::max() - colsForBatch) / rowSpan)
                   ? std::numeric_limits<std::int64_t>::max()
-                  : rowsForBatch * strideRow;
-        if(rowsForBatch > 0 && strideBatch < batchElements)
-            throw std::invalid_argument("Batch pitch (z axis) must not be smaller than rows * ld (batchStride).");
+                  : rowSpan * strideRow + colsForBatch;
+        if(rowsForBatch > 0 && strideBatch < minSpan)
+            throw std::invalid_argument(
+                "Batch pitch (z axis) must not be smaller than the minimal batch span (rows - 1) * ld + cols "
+                "(batchStride).");
         BatchedMatrixDescriptor desc{};
         desc.constPtr = static_cast<void const*>(alpaka::onHost::data(base));
         desc.mutPtr = const_cast<void*>(static_cast<void const*>(alpaka::onHost::data(base)));

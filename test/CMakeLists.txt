@@ -106,9 +106,9 @@ endfunction()
 # dispatches under include/alpaka/blas/internal/api/. Every descriptor value must go through
 # checkedVendorInt/checkedCast; a bare `int(xd.n)`, `static_cast<int>(ad.ld)` or `static_cast<int32_t>(n)` silently
 # truncates (and on a non-blocking host queue hides the failure in a discarded future). The guard scans the backend
-# headers line by line and flags every C-style/`static_cast` narrowing to `int`/`int32_t` except the explicit
-# allow-listed error-enum formatting `int(status)` in the host/cuda/hip error helpers, which does not narrow a
-# descriptor. The offending file and line are reported.
+# headers line by line and flags every C-style/`static_cast` narrowing to `int`/`int32_t`/`unsigned int`/`signed
+# int`, except the explicit allow-listed error-enum formatting `int(status)` in the host/cuda/hip error helpers,
+# which does not narrow a descriptor. The offending file and line are reported.
 function(alpakaV_add_blas_descriptor_narrowing_guard)
     set(guard_script "${CMAKE_CURRENT_BINARY_DIR}/check_blas_descriptor_narrowing.cmake")
     file(
@@ -125,22 +125,36 @@ foreach(header ${headers})
     # Only `int(status)` (the vendor error-enum formatting in the host/cuda/hip error helpers) is allowed; strip it
     # before scanning so the allow-list is explicit and local.
     string(REGEX REPLACE "int[ \t]*\\([ \t]*status[ \t]*\\)" "" content "${content}")
-    string(REPLACE "\n" ";" lines "${content}")
+    # Scan physical lines one at a time instead of splitting into a CMake list: list semantics collapse empty
+    # elements (and would also treat ';' in a source line as a separator), so a list-based loop reports the
+    # non-empty-line ordinal rather than the real file line number. Semicolons are ordinary characters here.
+    set(remaining "${content}")
     set(lineNo 0)
-    foreach(line ${lines})
+    while(NOT remaining STREQUAL "")
+        string(FIND "${remaining}" "\n" nlPos)
+        if(nlPos EQUAL -1)
+            set(line "${remaining}")
+            set(remaining "")
+        else()
+            string(SUBSTRING "${remaining}" 0 ${nlPos} line)
+            math(EXPR next "${nlPos} + 1")
+            string(SUBSTRING "${remaining}" ${next} -1 remaining)
+        endif()
         math(EXPR lineNo "${lineNo} + 1")
         set(found "")
         if(line MATCHES "static_cast[ \t]*<[ \t]*int[ \t]*>")
             set(found "static_cast<int>")
-        elseif(line MATCHES "static_cast[ \t]*<[ \t]*int32_t[ \t]*>")
+        elseif(line MATCHES "static_cast[ \t]*<[ \t]*(std::)?int32_t[ \t]*>")
             set(found "static_cast<int32_t>")
+        elseif(line MATCHES "static_cast[ \t]*<[ \t]*(unsigned|signed)[ \t]+int[ \t]*>")
+            set(found "static_cast<unsigned/signed int>")
         elseif(line MATCHES "^int[ \t]*\\(" OR line MATCHES "[^A-Za-z0-9_]int[ \t]*\\(")
             set(found "int(")
         endif()
         if(NOT found STREQUAL "")
             set(violations "${violations}\n  ${header}:${lineNo}: ${found} in: ${line}")
         endif()
-    endforeach()
+    endwhile()
 endforeach()
 if(NOT violations STREQUAL "")
     message(FATAL_ERROR "Bare 32-bit narrowing to int/int32_t in a BLAS backend header (use checkedVendorInt/checkedCast):${violations}")
