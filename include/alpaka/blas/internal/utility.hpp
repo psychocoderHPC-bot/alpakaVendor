@@ -149,6 +149,10 @@ namespace alpaka::blas::internal
     template<std::integral T_Pitch>
     [[nodiscard]] inline std::int64_t pitchToElements(T_Pitch pitch, std::size_t elementSize, char const* what)
     {
+        // Robustness: a zero element size would make the divisibility test below a division by zero. Callers derive
+        // the size from a scalar type and never pass zero, but the helper must not be undefined on a bogus argument.
+        if(elementSize == 0)
+            throw std::invalid_argument(std::string{what} + " requires a nonzero element size.");
         if(pitch % static_cast<T_Pitch>(elementSize) != static_cast<T_Pitch>(0))
             throw std::invalid_argument(std::string{what} + " must be a multiple of the element size.");
         return checkedCast<std::int64_t>(pitch / static_cast<T_Pitch>(elementSize), what);
@@ -189,6 +193,10 @@ namespace alpaka::blas::internal
         auto const ex = alpaka::onHost::getExtents(base);
         auto const pt = alpaka::onHost::getPitches(base);
         auto const stride = pitchToElements(pt.x(), sizeof(Value_t<View>), "Vector pitch (x axis)");
+        // A zero element stride touches the same element for every index and collapses the logical extent. It is not
+        // a dense vector layout, so reject it here rather than letting a vendor call see inc == 0.
+        if(stride == 0)
+            throw std::invalid_argument("Vector pitch (x axis) must not be a zero stride (inc == 0).");
         return VectorDescriptor{
             .constPtr = static_cast<void const*>(alpaka::onHost::data(base)),
             .mutPtr = const_cast<void*>(static_cast<void const*>(alpaka::onHost::data(base))),
@@ -236,6 +244,16 @@ namespace alpaka::blas::internal
         auto const strideBatch = pitchToElements(pt.z(), sizeof(Value_t<View>), "Batch pitch (z axis)");
         if(strideRow < ex.x())
             throw std::invalid_argument("Invalid batched matrix leading dimension.");
+        // Every batch occupies at least rows * ld elements (row-major, ld >= cols). A smaller batch stride makes
+        // consecutive batches overlap. The product is computed overflow-safely (saturating at INT64_MAX): a saturated
+        // product is larger than any representable batchStride, so the rejection below still fires.
+        auto const rowsForBatch = checkedCast<std::int64_t>(ex.y(), "matrix rows");
+        auto const batchElements
+            = (rowsForBatch > 0 && strideRow > std::numeric_limits<std::int64_t>::max() / rowsForBatch)
+                  ? std::numeric_limits<std::int64_t>::max()
+                  : rowsForBatch * strideRow;
+        if(rowsForBatch > 0 && strideBatch < batchElements)
+            throw std::invalid_argument("Batch pitch (z axis) must not be smaller than rows * ld (batchStride).");
         BatchedMatrixDescriptor desc{};
         desc.constPtr = static_cast<void const*>(alpaka::onHost::data(base));
         desc.mutPtr = const_cast<void*>(static_cast<void const*>(alpaka::onHost::data(base)));
@@ -273,7 +291,10 @@ namespace alpaka::blas::internal
     {
         if(d.n <= 0)
             return 0;
-        std::int64_t const inc = d.inc < 0 ? -d.inc : d.inc;
+        // Avoid the INT64_MIN negation overflow: |INT64_MIN| is not representable, saturate to INT64_MAX instead.
+        std::int64_t const inc = d.inc == std::numeric_limits<std::int64_t>::min()
+                                     ? std::numeric_limits<std::int64_t>::max()
+                                     : (d.inc < 0 ? -d.inc : d.inc);
         if(d.n - 1 != 0 && inc > std::numeric_limits<std::int64_t>::max() / (d.n - 1))
             return std::numeric_limits<std::int64_t>::max();
         return (d.n - 1) * inc;
@@ -287,10 +308,13 @@ namespace alpaka::blas::internal
     {
         auto const base = reinterpret_cast<std::uintptr_t>(ptr);
         constexpr auto uintptrMax = std::numeric_limits<std::uintptr_t>::max();
+        if(elementSize == 0)
+            return {base, base};
+        // Cap the byte span at the distance to the top of the address space so that base + bytes can never wrap.
+        auto const maxBytes = uintptrMax - base;
         auto const offset = static_cast<std::uintptr_t>(elementOffset);
-        auto const bytes = elementSize != 0 && offset > (uintptrMax - base) / elementSize
-                               ? uintptrMax
-                               : offset * static_cast<std::uintptr_t>(elementSize);
+        auto const bytes
+            = offset > maxBytes / elementSize ? maxBytes : offset * static_cast<std::uintptr_t>(elementSize);
         return {base, base + bytes};
     }
 
@@ -310,6 +334,15 @@ namespace alpaka::blas::internal
      * Both ends are inclusive. An operand with no accessed element (zero extent) or a null base pointer is ignored,
      * because it cannot alias anything the caller could observe. This backs the documented "must not overlap"
      * (``herk``) and "must not alias" (``syrk``) contracts; the previous behaviour left aliasing as UB.
+     *
+     * The check compares the conservative *byte span* from each operand's base pointer to its worst-case element
+     * offset, i.e. it treats each operand as one contiguous interval. That is intentionally an over-approximation of
+     * the exact set of touched bytes: two genuinely disjoint interleaved submatrices whose intervals happen to share
+     * padding (for example two column panels of the same buffer separated by a gap, or strided/interleaved views)
+     * are conservatively rejected as "overlapping" even though not a single element would actually be read twice.
+     * The rejection is safe (it never lets a true alias through) at the cost of false positives for such exotic
+     * views; the acceptance semantics are deliberately not relaxed to per-element analysis because the vendor
+     * routines read whole tiles and a padding-only overlap is not observable-safe to allow.
      */
     template<typename T_DescA, typename T_DescB>
     inline void validateNoOverlap(

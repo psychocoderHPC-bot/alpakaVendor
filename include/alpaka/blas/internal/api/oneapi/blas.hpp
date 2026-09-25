@@ -652,13 +652,13 @@ namespace alpaka::blas::internal
         // cases (including the beta scaling semantics) before dispatch, so this routine is only called for a
         // well-defined update (n, k > 0).
         auto const n = checkedVendorInt<alpaka::api::OneApi>(
-            ad.transpose == Transpose::none ? checkedVendorInt<alpaka::api::OneApi>(ad.rows, "rows")
-                                            : checkedVendorInt<alpaka::api::OneApi>(ad.cols, "cols"),
-            "gemm k");
+            ad.transpose == Transpose::none ? checkedVendorInt<alpaka::api::OneApi>(ad.rows, "herk n rows")
+                                            : checkedVendorInt<alpaka::api::OneApi>(ad.cols, "herk n cols"),
+            "herk n");
         auto const k = checkedVendorInt<alpaka::api::OneApi>(
-            ad.transpose == Transpose::none ? checkedVendorInt<alpaka::api::OneApi>(ad.cols, "cols")
-                                            : checkedVendorInt<alpaka::api::OneApi>(ad.rows, "rows"),
-            "gemm k");
+            ad.transpose == Transpose::none ? checkedVendorInt<alpaka::api::OneApi>(ad.cols, "herk k cols")
+                                            : checkedVendorInt<alpaka::api::OneApi>(ad.rows, "herk k rows"),
+            "herk k");
         // oneMKL herk expects real scalars (value_or_pointer<Treal>), so use REAL coefficients, not the complex type.
         auto const alphaT = static_cast<Real_t<T>>(alpha);
         auto const betaT = static_cast<Real_t<T>>(beta);
@@ -711,13 +711,13 @@ namespace alpaka::blas::internal
         auto const ad = makeMatrixDescriptor(A);
         auto const cd = makeMatrixDescriptor(C);
         auto const n = checkedVendorInt<alpaka::api::OneApi>(
-            ad.transpose == Transpose::none ? checkedVendorInt<alpaka::api::OneApi>(ad.rows, "rows")
-                                            : checkedVendorInt<alpaka::api::OneApi>(ad.cols, "cols"),
-            "gemm k");
+            ad.transpose == Transpose::none ? checkedVendorInt<alpaka::api::OneApi>(ad.rows, "syrk n rows")
+                                            : checkedVendorInt<alpaka::api::OneApi>(ad.cols, "syrk n cols"),
+            "syrk n");
         auto const k = checkedVendorInt<alpaka::api::OneApi>(
-            ad.transpose == Transpose::none ? checkedVendorInt<alpaka::api::OneApi>(ad.cols, "cols")
-                                            : checkedVendorInt<alpaka::api::OneApi>(ad.rows, "rows"),
-            "gemm k");
+            ad.transpose == Transpose::none ? checkedVendorInt<alpaka::api::OneApi>(ad.cols, "syrk k cols")
+                                            : checkedVendorInt<alpaka::api::OneApi>(ad.rows, "syrk k rows"),
+            "syrk k");
         // For real operands conjugateTransposed is the identity-conjugated transpose: normalize to transposed.
         auto const op
             = ad.transpose == Transpose::none ? oneapi::mkl::transpose::nontrans : oneapi::mkl::transpose::trans;

@@ -4,6 +4,7 @@
  */
 
 #include <alpakaTest/deviceHelper.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <cstdint>
 #include <limits>
 #include <stdexcept>
@@ -177,6 +178,43 @@ TEMPLATE_LIST_TEST_CASE(
     CHECK_THROWS_AS(alpaka::blas::internal::makeMatrixDescriptor(misalignedColumn), std::invalid_argument);
 }
 
+TEMPLATE_LIST_TEST_CASE(
+    "blas vector descriptors reject a zero element stride (inc == 0) and batched batchStride < rows * ld",
+    "[unit][blas][layout]",
+    TestBackends)
+{
+    // A zero x-axis pitch yields element stride 0, which is a multiple of the element size but collapses the vector
+    // (every index aliases the same element). It must be rejected explicitly. A real 1-D MdSpan normalizes its
+    // innermost pitch to sizeof(value_type), so the PaddedVectorView stub exposes the zero pitch.
+    auto buffer = std::vector<float>(128u);
+    auto zeroStrideVector = PaddedVectorView{buffer.data(), 0u};
+    CHECK_THROWS_WITH(
+        alpaka::blas::internal::makeVectorDescriptor(zeroStrideVector),
+        Catch::Matchers::ContainsSubstring("inc == 0"));
+    // Positive control: the same view with an element-sized pitch is accepted with inc == 1.
+    auto unitStrideVector = PaddedVectorView{buffer.data(), sizeof(float)};
+    CHECK(alpaka::blas::internal::makeVectorDescriptor(unitStrideVector).inc == 1);
+
+    // Batched matrix: every batch needs at least rows * ld elements; a smaller batch stride makes consecutive
+    // batches overlap. extent {batch=2, rows=3, cols=4} => ld >= 4 and rows * ld >= 12 elements. A batch pitch of
+    // 24 bytes is 6 elements and must be rejected; 48 bytes is exactly 12 elements and is the positive control.
+    auto validBatch = alpaka::makeMdSpan(
+        buffer.data(),
+        alpaka::Vec<uint32_t, 3u>{2u, 3u, 4u},
+        alpaka::Vec<std::size_t, 3u>{48u, 16u, sizeof(float)});
+    auto validDesc = alpaka::blas::internal::makeBatchedMatrixDescriptor(validBatch);
+    CHECK(validDesc.ld == 4);
+    CHECK(validDesc.batchStride == 12);
+
+    auto shortBatch = alpaka::makeMdSpan(
+        buffer.data(),
+        alpaka::Vec<uint32_t, 3u>{2u, 3u, 4u},
+        alpaka::Vec<std::size_t, 3u>{24u, 16u, sizeof(float)});
+    CHECK_THROWS_WITH(
+        alpaka::blas::internal::makeBatchedMatrixDescriptor(shortBatch),
+        Catch::Matchers::ContainsSubstring("batchStride"));
+}
+
 // Pure metadata tests for the centralized validation helpers. These do not touch a device, so they run once (not per
 // backend) and cover the pitch divisibility, vendor-width narrowing and alias/overlap contracts directly.
 TEST_CASE("blas validation helpers reject non-multiple pitches and unsafe narrowing", "[unit][blas][layout]")
@@ -240,6 +278,24 @@ TEST_CASE("blas validation helpers reject non-multiple pitches and unsafe narrow
     CHECK_THROWS_AS(validateNoOverlap(a, sizeof(float), same, sizeof(float), "test"), std::invalid_argument);
     CHECK_NOTHROW(validateNoOverlap(a, sizeof(float), disjoint, sizeof(float), "test"));
     CHECK_NOTHROW(validateNoOverlap(a, sizeof(float), empty, sizeof(float), "test"));
+
+    // Partial overlap with a *distinct* base: a 2x2 ld=2 matrix spans elements 0..3, i.e. bytes 0..15. A second
+    // operand starting one element (4 bytes) later spans bytes 4..19 and genuinely intersects it -> reject. An
+    // operand starting at byte 16 (one element past the first span's exclusive end) is adjacent and must pass.
+    auto const partialBase = reinterpret_cast<void*>(static_cast<std::uintptr_t>(0x1000 + 4));
+    auto const adjacentBase = reinterpret_cast<void*>(static_cast<std::uintptr_t>(0x1000 + 16));
+    MatrixDescriptor partial{};
+    partial.constPtr = partialBase;
+    partial.rows = 2;
+    partial.cols = 2;
+    partial.ld = 2;
+    MatrixDescriptor adjacent{};
+    adjacent.constPtr = adjacentBase;
+    adjacent.rows = 2;
+    adjacent.cols = 2;
+    adjacent.ld = 2;
+    CHECK_THROWS_AS(validateNoOverlap(a, sizeof(float), partial, sizeof(float), "partial"), std::invalid_argument);
+    CHECK_NOTHROW(validateNoOverlap(a, sizeof(float), adjacent, sizeof(float), "adjacent"));
 
     // A vector increment other than 1 expands the worst-case span and is accounted for.
     VectorDescriptor v{};

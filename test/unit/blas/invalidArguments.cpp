@@ -4,6 +4,7 @@
  */
 
 #include <alpakaTest/deviceHelper.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <limits>
 
 #include "alpaka/blas.hpp"
@@ -207,6 +208,30 @@ TEMPLATE_LIST_TEST_CASE(
             CHECK_THROWS_AS(alpaka::blas::onHost::herk(queue, 1.0f, A, 1.0f, upperCoverlap), std::invalid_argument);
         }
 
+        // Partial overlap with a *distinct* base pointer: the same 3x3 shape one element later genuinely intersects
+        // A's byte span and must be rejected. The adjacent view starting exactly one element past A's exclusive end
+        // is disjoint and must be accepted (positive control). Both views are tiny and never read.
+        {
+            auto storage = alpaka::onHost::allocUnified<float>(device, 64u);
+            auto makeView = [&](float* base)
+            {
+                return alpaka::makeMdSpan(
+                    base,
+                    alpaka::Vec<std::uint32_t, 2u>{3u, 3u},
+                    alpaka::Vec<std::size_t, 2u>{3u * sizeof(float), sizeof(float)});
+            };
+            auto A = makeView(storage.data());
+            auto Cpartial = alpaka::blas::upper(makeView(storage.data() + 1u));
+            CHECK_THROWS_WITH(
+                alpaka::blas::onHost::syrk(queue, 1.0f, A, 1.0f, Cpartial),
+                Catch::Matchers::ContainsSubstring("must not overlap"));
+            // A spans elements 0..8 (3x3 ld=3); starting at element 9 is adjacent, not overlapping.
+            auto Cadjacent = alpaka::blas::upper(makeView(storage.data() + 9u));
+            CHECK_NOTHROW(alpaka::blas::onHost::syrk(queue, 1.0f, A, 1.0f, Cadjacent));
+            // Drain the accepted positive-control work before storage goes out of scope.
+            alpaka::onHost::wait(queue);
+        }
+
         // Zero-extent no-op contracts: an empty vector copy/scal and an empty rank-k update perform no data access
         // and must not throw. A one-element backing buffer is used so any out-of-range access would be obvious.
         {
@@ -260,6 +285,51 @@ TEMPLATE_LIST_TEST_CASE(
                 CHECK_THROWS_AS(alpaka::blas::internal::checkedVendorInt<Api>(desc.n, "n"), std::invalid_argument);
             }
         }
+        SUCCEED();
+    }
+}
+
+TEMPLATE_LIST_TEST_CASE(
+    "blas host non-blocking queue surfaces oversized-extent rejection synchronously",
+    "[unit][blas][invalid]",
+    TestBackends)
+{
+    auto device = getDeviceOrSkipTest(TestType::makeDict());
+    using Api = std::remove_cvref_t<ALPAKA_TYPEOF(device.getApi())>;
+    if constexpr(!isBlasBackendEnabledForDevice(device))
+    {
+        SUCCEED();
+    }
+    else if constexpr(!std::same_as<Api, alpaka::api::Host>)
+    {
+        // The narrowed-int rejection path under test is host-specific; cuda/hip/oneapi have their own dispatch.
+        SUCCEED();
+    }
+    else
+    {
+        // A host *non-blocking* queue defers the enqueued lambda onto the callback thread. A descriptor narrowing
+        // performed inside that lambda would be captured in a future that enqueueNativeFn discards, so the caller
+        // would never observe the error. The narrowing must therefore run on the caller thread before enqueue, and
+        // this CHECK_THROWS_AS must fire on the calling thread. The views are lightweight: a one-element backing
+        // store with a huge logical extent (no allocation proportional to the extent).
+        auto queue = device.makeQueue(alpaka::queueKind::nonBlocking);
+        constexpr std::size_t hugeN = static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max()) + 2u;
+        auto storageX = alpaka::onHost::allocUnified<float>(device, 1u);
+        auto storageY = alpaka::onHost::allocUnified<float>(device, 1u);
+        auto bigX = alpaka::makeMdSpan(
+            storageX.data(),
+            alpaka::Vec<std::size_t, 1u>{hugeN},
+            alpaka::Vec<std::size_t, 1u>{sizeof(float)});
+        auto bigY = alpaka::makeMdSpan(
+            storageY.data(),
+            alpaka::Vec<std::size_t, 1u>{hugeN},
+            alpaka::Vec<std::size_t, 1u>{sizeof(float)});
+        CHECK_THROWS_AS(alpaka::blas::onHost::copy(queue, bigX, bigY), std::invalid_argument);
+        // Positive control: a small pair on the same non-blocking queue is accepted and completes after wait.
+        auto smallX = alpaka::onHost::allocUnified<float>(device, 4u);
+        auto smallY = alpaka::onHost::allocUnified<float>(device, 4u);
+        CHECK_NOTHROW(alpaka::blas::onHost::copy(queue, smallX, smallY));
+        alpaka::onHost::wait(queue);
         SUCCEED();
     }
 }
