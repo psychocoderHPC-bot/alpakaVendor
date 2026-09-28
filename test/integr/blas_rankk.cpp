@@ -2271,10 +2271,18 @@ TEMPLATE_LIST_TEST_CASE(
             Cst.data(),
             alpaka::Vec<uint32_t, 2u>{n, n},
             alpaka::Vec<std::size_t, 2u>{static_cast<std::size_t>(n) * sizeof(Scalar), sizeof(Scalar)});
-        auto Anormal = alpaka::makeMdSpan(
+        // An A that is empty in its second extent (k == 0) touches no element and is ignored by the overlap guard.
+        // This isolates the *metadata* checks exercised below from the A-vs-C overlap guard: that guard
+        // conservatively treats each operand as one contiguous byte span from its base pointer to its worst-case
+        // element offset, so an operand with the deliberately over-large pitch used here claims a span far beyond its
+        // real allocation and can spuriously "overlap" the distinct A/C allocations whenever the allocator happens to
+        // place them close together -- an address-layout/ASLR-dependent false positive (the same binary can pass or
+        // fail). The overlap rejection itself is a real feature covered by the dedicated alias tests; the checks here
+        // target vendor-int narrowing / scale-path metadata, which never read A.
+        auto Aempty = alpaka::makeMdSpan(
             Astorage.data(),
-            alpaka::Vec<uint32_t, 2u>{n, k},
-            alpaka::Vec<std::size_t, 2u>{static_cast<std::size_t>(n) * sizeof(Scalar), sizeof(Scalar)});
+            alpaka::Vec<std::size_t, 2u>{static_cast<std::size_t>(n), std::size_t{0u}},
+            alpaka::Vec<std::size_t, 2u>{sizeof(Scalar), sizeof(Scalar)});
         // Deliberately fill none of the oversized views: the enormous pitch means any element write would overflow
         // the tiny backing storage. The rejection must come from metadata alone, before any data access.
         auto upperC = alpaka::blas::upper(C);
@@ -2292,12 +2300,15 @@ TEMPLATE_LIST_TEST_CASE(
         // backend, even though the no-op enqueues no kernel.
         if constexpr(!std::same_as<ALPAKA_TYPEOF(device.getApi()), alpaka::api::OneApi>)
         {
-            CHECK_THROWS_AS(alpaka::blas::onHost::herk(queue, 0.0f, Anormal, 1.0f, upperCbig), std::invalid_argument);
+            // Aempty (k == 0) keeps the call out of the A-vs-C byte-span overlap guard, which would otherwise reject
+            // the distinct, merely over-large-pitched views depending on their (ASLR/per-allocator) relative address;
+            // the oversized C is still rejected by the scale path's vendor-int narrowing.
+            CHECK_THROWS_AS(alpaka::blas::onHost::herk(queue, 0.0f, Aempty, 1.0f, upperCbig), std::invalid_argument);
         }
         else
         {
             // oneMKL takes 64-bit leading dimensions, so the same metadata is accepted (matching its k > 0 path).
-            alpaka::blas::onHost::herk(queue, 0.0f, Anormal, 1.0f, upperCbig);
+            alpaka::blas::onHost::herk(queue, 0.0f, Aempty, 1.0f, upperCbig);
             alpaka::onHost::wait(queue);
         }
         // Scale-path n>uint32-max guard: a degenerate (k==0) herk whose C claims more than uint32 rows must be
