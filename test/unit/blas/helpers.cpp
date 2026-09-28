@@ -52,7 +52,7 @@ namespace
             return ptr;
         }
     };
-    
+
     /** Minimal 2-D view stub exposing a configurable innermost (column) byte pitch. */
     struct PaddedMatrixView
     {
