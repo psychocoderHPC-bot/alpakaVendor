@@ -1,5 +1,5 @@
-/* Copyright 2026 Simeon Ehrig
- * SPDX-License-Identifier: ISC
+/* SPDX-FileCopyrightText: Simeon Ehrig
+ * SPDX-License-Identifier: MPL-2.0
  */
 
 #pragma once

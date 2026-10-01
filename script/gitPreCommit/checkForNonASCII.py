@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# Copyright 2026 René Widera
+# SPDX-FileCopyrightText: René Widera
 # SPDX-License-Identifier: MPL-2.0
 
 from pathlib import Path

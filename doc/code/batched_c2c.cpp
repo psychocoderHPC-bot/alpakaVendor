@@ -1,5 +1,5 @@
 /*
- * Copyright 2026 Rene Widera
+ * SPDX-FileCopyrightText: Rene Widera
  * SPDX-License-Identifier: ISC
  *
  * Batched transforms: Batched C2C example

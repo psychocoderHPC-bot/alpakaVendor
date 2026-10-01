@@ -1,5 +1,5 @@
 /*
- * Copyright 2026 Rene Widera
+ * SPDX-FileCopyrightText: Rene Widera
  * SPDX-License-Identifier: ISC
  *
  * Quickstart: Basic C2C transform (backend-agnostic)
