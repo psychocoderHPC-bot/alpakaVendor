@@ -1,5 +1,5 @@
 /*
- * Copyright 2026 Rene Widera
+ * SPDX-FileCopyrightText: Rene Widera
  * SPDX-License-Identifier: ISC
  *
  * In-place real transforms: Padding helpers example

@@ -1,6 +1,6 @@
 #
-# Copyright 2026 René Widera
-# SPDX-License-Identifier: ISC
+# SPDX-FileCopyrightText: René Widera
+# SPDX-License-Identifier: MPL-2.0
 #
 
 cmake_minimum_required(VERSION 3.25)

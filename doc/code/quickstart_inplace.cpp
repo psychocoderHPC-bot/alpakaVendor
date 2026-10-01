@@ -1,5 +1,5 @@
 /*
- * Copyright 2026 Rene Widera
+ * SPDX-FileCopyrightText: Rene Widera
  * SPDX-License-Identifier: ISC
  *
  * Quickstart: In-place R2C/C2R roundtrip (backend-agnostic)

@@ -1,6 +1,8 @@
 minimum_pre_commit_version: 3.2.0 # necessitated by Lucas-C's hooks
 default_install_hook_types: [pre-commit, pre-push]
-exclude: "thirdParty"
+# License texts under LICENSES/ must stay byte-for-byte verbatim, so they are
+# excluded from the content-normalizing hooks (tabs, whitespace, EOF, ...).
+exclude: "thirdParty|^LICENSES/"
 repos:
 - repo: https://github.com/pre-commit/mirrors-clang-format
   rev: v20.1.8
@@ -50,6 +52,10 @@ repos:
     - id: shellcheck
       # required that shellcheck can follow sourced scripts
       args: [-x]
+- repo: https://github.com/fsfe/reuse-tool
+  rev: v6.2.0
+  hooks:
+    - id: reuse
 - repo: local
   hooks:
     - id: ascii-check

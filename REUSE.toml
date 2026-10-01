@@ -1,0 +1,32 @@
+version = 1
+
+# Documentation and its build configuration are licensed under CC-BY-4.0.
+[[annotations]]
+path = [
+    "doc/.gitignore",
+    "doc/Doxyfile",
+    "doc/Doxyfile_dev",
+    "doc/Makefile",
+    "doc/requirements.txt",
+    "doc/source/**",
+]
+SPDX-FileCopyrightText = "René Widera"
+SPDX-License-Identifier = "CC-BY-4.0"
+
+# Repository meta files, CI, packaging and sanitizer configuration use the
+# project license MPL-2.0.
+[[annotations]]
+path = [
+    ".clang-format",
+    ".gersemirc",
+    ".gitignore",
+    ".gitmodules",
+    ".pre-commit-config.yaml",
+    ".github/workflows/ci.yml",
+    "CMakePresets.json",
+    "README.md",
+    "cmake/alpakaVendorConfig.cmake.in",
+    "sanitizer/*.txt",
+]
+SPDX-FileCopyrightText = "René Widera"
+SPDX-License-Identifier = "MPL-2.0"
