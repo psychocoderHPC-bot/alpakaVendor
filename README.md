@@ -112,6 +112,22 @@ target_link_libraries(your_target PRIVATE alpakaVendor::alpakaVendor)
 | `alpakaV_DEP_ONEMKL` | `OFF`            | Enable oneMKL DFT and BLAS oneAPI backends |
 | `alpakaV_TESTS` | `ON` (top-level) | Build tests |
 | `alpakaV_DOCS` | `OFF`            | Build documentation |
+| `alpakaV_ALPAKA_PROVIDER` | `intern` | `intern`: use the bundled `extern/alpaka3` submodule (or its pinned FetchContent fallback). `extern`: reuse an existing `alpaka::alpaka` target and fail if it is missing. |
+
+### Using an externally provided alpaka
+
+Projects that already vendor alpaka (for example PIConGPU) must not let alpakaVendor add a second copy.
+Add alpaka first and select the external provider:
+
+```cmake
+add_subdirectory(thirdParty/alpaka)
+set(alpakaV_ALPAKA_PROVIDER extern CACHE STRING "" FORCE)
+add_subdirectory(alpakaVendor)
+target_link_libraries(your_target PRIVATE alpakaVendor::alpakaVendor)
+```
+
+`extern` never calls `add_subdirectory` or `FetchContent` for alpaka and fails at configure time when
+`alpaka::alpaka` does not exist yet. The default `intern` keeps the self-contained behavior.
 
 ## Backend Selection
 

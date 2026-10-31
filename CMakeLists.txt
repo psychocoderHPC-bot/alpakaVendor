@@ -26,6 +26,13 @@ option(alpakaV_DEP_ROCFFT "Enable rocFFT HIP backend." OFF)
 option(alpakaV_DEP_ROCBLAS "Enable rocBLAS HIP backend." OFF)
 option(alpakaV_DEP_ONEMKL "Enable oneMKL DFT and BLAS oneAPI backends." OFF)
 option(alpakaV_DOCS "Build documentation and code snippets." OFF)
+set(
+    alpakaV_ALPAKA_PROVIDER
+    "intern"
+    CACHE STRING
+    "source of alpaka: 'intern' bundles extern/alpaka3 or uses FetchContent, 'extern' reuses an existing alpaka::alpaka target"
+)
+set_property(CACHE alpakaV_ALPAKA_PROVIDER PROPERTY STRINGS intern extern)
 
 if(alpaka_DEP_HIP)
     enable_language(HIP)
@@ -38,17 +45,36 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/extern/alpaka3/CMakeLists.txt")
-    add_subdirectory(extern/alpaka3)
+if(alpakaV_ALPAKA_PROVIDER STREQUAL "extern")
+    # A consumer such as PIConGPU already vendors alpaka and defines alpaka::alpaka. Reusing that
+    # target is the only way to keep a single alpaka in the build; adding a second one would be an
+    # ODR violation.
+    if(NOT TARGET alpaka::alpaka)
+        message(
+            FATAL_ERROR
+            "alpakaV_ALPAKA_PROVIDER=extern requires an already defined alpaka::alpaka target. \
+Add the alpaka subdirectory (or find_package(alpaka)) before alpakaVendor, or select \
+alpakaV_ALPAKA_PROVIDER=intern."
+        )
+    endif()
+    message(STATUS "alpakaVendor: alpaka provider 'extern' (reusing existing alpaka::alpaka; no bundled alpaka added)")
+elseif(alpakaV_ALPAKA_PROVIDER STREQUAL "intern")
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/extern/alpaka3/CMakeLists.txt")
+        message(STATUS "alpakaVendor: alpaka provider 'intern' (adding bundled extern/alpaka3 submodule)")
+        add_subdirectory(extern/alpaka3)
+    else()
+        # Fallback used when the extern/alpaka3 submodule is absent. Keep both the
+        # repository and the pinned commit in sync with .gitmodules.
+        message(STATUS "alpakaVendor: alpaka provider 'intern' (FetchContent alpaka)")
+        FetchContent_Declare(
+            alpaka3
+            GIT_REPOSITORY https://github.com/alpaka-group/alpaka.git
+            GIT_TAG 7b92361468d3280c260200198081ae7e98f0bc56
+        )
+        FetchContent_MakeAvailable(alpaka3)
+    endif()
 else()
-    # Fallback used when the extern/alpaka3 submodule is absent. Keep both the
-    # repository and the pinned commit in sync with .gitmodules.
-    FetchContent_Declare(
-        alpaka3
-        GIT_REPOSITORY https://github.com/alpaka-group/alpaka.git
-        GIT_TAG 7b92361468d3280c260200198081ae7e98f0bc56
-    )
-    FetchContent_MakeAvailable(alpaka3)
+    message(FATAL_ERROR "alpakaV_ALPAKA_PROVIDER must be 'intern' or 'extern', got '${alpakaV_ALPAKA_PROVIDER}'.")
 endif()
 
 if(alpakaV_DEP_FFTW)
