@@ -41,10 +41,12 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/extern/alpaka3/CMakeLists.txt")
     add_subdirectory(extern/alpaka3)
 else()
+    # Fallback used when the extern/alpaka3 submodule is absent. Keep both the
+    # repository and the pinned commit in sync with .gitmodules.
     FetchContent_Declare(
         alpaka3
-        GIT_REPOSITORY https://github.com/alpaka-group/alpaka3.git
-        GIT_TAG e91f6f4d8d1da321a6423a8ad5b4954562c57a9a
+        GIT_REPOSITORY https://github.com/alpaka-group/alpaka.git
+        GIT_TAG 7b92361468d3280c260200198081ae7e98f0bc56
     )
     FetchContent_MakeAvailable(alpaka3)
 endif()
