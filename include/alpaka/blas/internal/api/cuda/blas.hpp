@@ -5,7 +5,11 @@
 
 #pragma once
 
+#include <map>
+#include <mutex>
+#include <stdexcept>
 #include <type_traits>
+#include <utility>
 
 #include "alpaka/blas/internal/api/config.hpp"
 #include "alpaka/blas/internal/api/iamaxKernel.hpp"
@@ -57,22 +61,75 @@ namespace alpaka::blas::internal
                 std::string{what} + " failed with cuBLAS error code " + std::to_string(int(status)));
     }
 
-    struct CublasHandle
+    /** Process-lifetime cache of cuBLAS handles keyed by device and native stream.
+     *
+     * Creating and destroying a cuBLAS handle per BLAS call dominates small calls (a
+     * 1536x210 GEMV is dominated by handle overhead). Handles are therefore created lazily and
+     * reused for subsequent calls on the same device/stream. Keying by (device, stream) keeps
+     * concurrent streams and multiple devices independent without serializing them on a shared
+     * handle. The cache has process lifetime; see release() for the explicit cleanup hook.
+     */
+    struct CublasHandleCache
     {
-        cublasHandle_t handle{};
+        std::mutex mutex;
+        std::map<std::pair<int, cudaStream_t>, cublasHandle_t> handles;
 
-        explicit CublasHandle(auto nativeStream)
+        cublasHandle_t acquire(cudaStream_t nativeStream)
         {
-            check(cublasCreate(&handle), "cublasCreate");
-            check(cublasSetStream(handle, nativeStream), "cublasSetStream");
+            int device = 0;
+            if(auto const status = cudaGetDevice(&device); status != cudaSuccess)
+                throw std::runtime_error(
+                    std::string{"cudaGetDevice failed with CUDA error code "} + std::to_string(int(status)));
+
+            std::lock_guard<std::mutex> lock{mutex};
+            auto const key = std::make_pair(device, nativeStream);
+            auto it = handles.find(key);
+            if(it == handles.end())
+            {
+                cublasHandle_t handle{};
+                check(cublasCreate(&handle), "cublasCreate");
+                if(auto const status = cublasSetStream(handle, nativeStream); status != CUBLAS_STATUS_SUCCESS)
+                {
+                    static_cast<void>(cublasDestroy(handle));
+                    check(status, "cublasSetStream");
+                }
+                it = handles.emplace(key, handle).first;
+            }
+            return it->second;
         }
 
-        ~CublasHandle()
+        /** Destroy every cached handle.
+         *
+         * This is not called from a static destructor: destroying cuBLAS handles during process
+         * teardown can run after the CUDA runtime has already been unloaded and crash. The cache
+         * therefore has process lifetime and the CUDA driver reclaims the handles when the context
+         * is destroyed. Handles are never created per call, so the number of live handles is
+         * bounded by the number of device/stream pairs.
+         */
+        void release()
         {
-            if(handle != nullptr)
-                static_cast<void>(cublasDestroy(handle));
+            std::lock_guard<std::mutex> lock{mutex};
+            for(auto& [key, handle] : handles)
+            {
+                static_cast<void>(key);
+                if(handle != nullptr)
+                    static_cast<void>(cublasDestroy(handle));
+            }
+            handles.clear();
         }
     };
+
+    inline CublasHandleCache& cublasHandleCache()
+    {
+        // Intentionally process-lifetime to avoid destruction-order crashes with the CUDA runtime.
+        static CublasHandleCache* cache = new CublasHandleCache{};
+        return *cache;
+    }
+
+    inline cublasHandle_t acquireCublasHandle(cudaStream_t nativeStream)
+    {
+        return cublasHandleCache().acquire(nativeStream);
+    }
 
     inline auto toCublasOp(Transpose transpose)
     {
@@ -217,8 +274,7 @@ namespace alpaka::blas::internal
         queue.enqueueNativeFn(
             [=](cudaStream_t nativeStream)
             {
-                CublasHandle cublas{nativeStream};
-                auto handle = cublas.handle;
+                auto handle = acquireCublasHandle(nativeStream);
                 setMathMode<T>(handle, options);
                 if constexpr(std::same_as<T, float>)
                     check(
@@ -279,8 +335,7 @@ namespace alpaka::blas::internal
         queue.enqueueNativeFn(
             [=](cudaStream_t nativeStream)
             {
-                CublasHandle cublas{nativeStream};
-                auto handle = cublas.handle;
+                auto handle = acquireCublasHandle(nativeStream);
                 setMathMode<T>(handle, options);
                 if constexpr(std::same_as<T, float>)
                     check(
@@ -339,8 +394,7 @@ namespace alpaka::blas::internal
         queue.enqueueNativeFn(
             [=](cudaStream_t nativeStream)
             {
-                CublasHandle cublas{nativeStream};
-                auto handle = cublas.handle;
+                auto handle = acquireCublasHandle(nativeStream);
                 setMathMode<T>(handle, options);
                 T alphaT = static_cast<T>(alpha);
                 if constexpr(std::same_as<T, float>)
@@ -389,8 +443,7 @@ namespace alpaka::blas::internal
         queue.enqueueNativeFn(
             [=](cudaStream_t nativeStream)
             {
-                CublasHandle cublas{nativeStream};
-                auto handle = cublas.handle;
+                auto handle = acquireCublasHandle(nativeStream);
                 setMathMode<T>(handle, options);
                 T alphaT = static_cast<T>(alpha);
                 if constexpr(std::same_as<T, float>)
@@ -458,8 +511,7 @@ namespace alpaka::blas::internal
         queue.enqueueNativeFn(
             [=](cudaStream_t nativeStream)
             {
-                CublasHandle cublas{nativeStream};
-                auto handle = cublas.handle;
+                auto handle = acquireCublasHandle(nativeStream);
                 setMathMode<T>(handle, options);
                 CublasPointerModeGuard pointerModeGuard{handle};
                 if constexpr(std::same_as<T, float>)
@@ -527,8 +579,7 @@ namespace alpaka::blas::internal
         queue.enqueueNativeFn(
             [=](cudaStream_t nativeStream)
             {
-                CublasHandle cublas{nativeStream};
-                auto handle = cublas.handle;
+                auto handle = acquireCublasHandle(nativeStream);
                 setMathMode<Scalar>(handle, options);
                 CublasPointerModeGuard pointerModeGuard{handle};
                 if constexpr(std::same_as<Scalar, float>)
@@ -593,8 +644,7 @@ namespace alpaka::blas::internal
         queue.enqueueNativeFn(
             [=](cudaStream_t nativeStream)
             {
-                CublasHandle cublas{nativeStream};
-                auto handle = cublas.handle;
+                auto handle = acquireCublasHandle(nativeStream);
                 setMathMode<T>(handle, options);
                 CublasPointerModeGuard pointerModeGuard{handle};
                 if constexpr(std::same_as<T, float>)
@@ -641,8 +691,7 @@ namespace alpaka::blas::internal
         queue.enqueueNativeFn(
             [=](cudaStream_t nativeStream)
             {
-                CublasHandle cublas{nativeStream};
-                auto handle = cublas.handle;
+                auto handle = acquireCublasHandle(nativeStream);
                 setMathMode<T>(handle, options);
                 CublasPointerModeGuard pointerModeGuard{handle};
                 if constexpr(std::same_as<T, float>)
@@ -689,8 +738,7 @@ namespace alpaka::blas::internal
         queue.enqueueNativeFn(
             [=](cudaStream_t nativeStream)
             {
-                CublasHandle cublas{nativeStream};
-                auto handle = cublas.handle;
+                auto handle = acquireCublasHandle(nativeStream);
                 setMathMode<T>(handle, options);
                 CublasPointerModeGuard pointerModeGuard{handle};
                 if constexpr(std::same_as<T, float>)
@@ -763,8 +811,7 @@ namespace alpaka::blas::internal
         queue.enqueueNativeFn(
             [=](cudaStream_t nativeStream)
             {
-                CublasHandle cublas{nativeStream};
-                auto handle = cublas.handle;
+                auto handle = acquireCublasHandle(nativeStream);
                 setMathMode<T>(handle, options);
                 setAtomicsMode(handle, options);
                 T alphaT = static_cast<T>(alpha);
@@ -819,8 +866,7 @@ namespace alpaka::blas::internal
         queue.enqueueNativeFn(
             [=](cudaStream_t nativeStream)
             {
-                CublasHandle cublas{nativeStream};
-                auto handle = cublas.handle;
+                auto handle = acquireCublasHandle(nativeStream);
                 setMathMode<T>(handle, options);
                 setAtomicsMode(handle, options);
                 T alphaT = static_cast<T>(alpha);
@@ -876,8 +922,7 @@ namespace alpaka::blas::internal
         queue.enqueueNativeFn(
             [=](cudaStream_t nativeStream)
             {
-                CublasHandle cublas{nativeStream};
-                auto handle = cublas.handle;
+                auto handle = acquireCublasHandle(nativeStream);
                 setMathMode<T>(handle, options);
                 setAtomicsMode(handle, options);
                 T alphaT = static_cast<T>(alpha);
@@ -970,8 +1015,7 @@ namespace alpaka::blas::internal
         queue.enqueueNativeFn(
             [=](cudaStream_t nativeStream)
             {
-                CublasHandle cublas{nativeStream};
-                auto handle = cublas.handle;
+                auto handle = acquireCublasHandle(nativeStream);
                 setMathMode<T>(handle, options);
                 setAtomicsMode(handle, options);
                 T alphaT = static_cast<T>(alpha);
@@ -1071,8 +1115,7 @@ namespace alpaka::blas::internal
         queue.enqueueNativeFn(
             [=](cudaStream_t nativeStream)
             {
-                CublasHandle cublas{nativeStream};
-                auto handle = cublas.handle;
+                auto handle = acquireCublasHandle(nativeStream);
                 setMathMode<T>(handle, options);
                 setAtomicsMode(handle, options);
                 using Real = Real_t<T>;
@@ -1143,8 +1186,7 @@ namespace alpaka::blas::internal
         queue.enqueueNativeFn(
             [=](cudaStream_t nativeStream)
             {
-                CublasHandle cublas{nativeStream};
-                auto handle = cublas.handle;
+                auto handle = acquireCublasHandle(nativeStream);
                 setMathMode<T>(handle, options);
                 setAtomicsMode(handle, options);
                 // Row-major C = alpha*M*M^T + beta*C with C row-major n x n is, seen column-major,
