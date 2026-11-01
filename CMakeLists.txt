@@ -26,8 +26,7 @@ option(alpakaV_DEP_ROCFFT "Enable rocFFT HIP backend." OFF)
 option(alpakaV_DEP_ROCBLAS "Enable rocBLAS HIP backend." OFF)
 option(alpakaV_DEP_ONEMKL "Enable oneMKL DFT and BLAS oneAPI backends." OFF)
 option(alpakaV_DOCS "Build documentation and code snippets." OFF)
-set(
-    alpakaV_ALPAKA_PROVIDER
+set(alpakaV_ALPAKA_PROVIDER
     "intern"
     CACHE STRING
     "source of alpaka: 'intern' bundles extern/alpaka3 or uses FetchContent, 'extern' reuses an existing alpaka::alpaka target"
